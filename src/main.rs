@@ -1,5 +1,5 @@
 use eframe::egui;
-use sysinfo::{System, ProcessRefreshKind};
+use sysinfo::System;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -34,12 +34,12 @@ impl RobloxBooster {
     fn update_status(&mut self) {
         if self.last_update.elapsed() > Duration::from_secs(2) {
             let mut sys = self.system.lock().unwrap();
-            sys.refresh_processes_specifics(ProcessRefreshKind::new());
+            sys.refresh_processes();
 
             // Kiểm tra Roblox có đang chạy không
             self.roblox_running = false;
             for (_, process) in sys.processes() {
-                let name = process.name().to_lowercase();
+                let name = process.name().to_string_lossy().to_lowercase();
                 if name.contains("roblox") && !name.contains("launcher") {
                     self.roblox_running = true;
                     break;
@@ -275,15 +275,25 @@ impl eframe::App for RobloxBooster {
 }
 
 fn main() -> Result<(), eframe::Error> {
+    // Load icon nếu có, không crash nếu không tìm thấy
+    let icon = if let Ok(icon_bytes) = std::fs::read("assets/icon.png") {
+        eframe::icon_data::from_png_bytes(&icon_bytes).ok()
+    } else {
+        None
+    };
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 550.0])
             .with_resizable(false)
-            .with_icon(
-                eframe::icon_data::from_png_bytes(
-                    &include_bytes!("../assets/icon.png")[..]
-                ).unwrap_or_default()
-            ),
+            .with_icon(icon.unwrap_or_else(|| {
+                // Icon mặc định nếu không load được
+                eframe::IconData {
+                    rgba: vec![],
+                    width: 0,
+                    height: 0,
+                }
+            })),
         ..Default::default()
     };
 
