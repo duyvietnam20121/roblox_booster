@@ -17,8 +17,6 @@
 
 ## 🔧 Cài đặt
 
-### Cách 1: Build thủ công
-
 1. **Tạo project:**
 ```bash
 mkdir roblox_booster
@@ -30,13 +28,11 @@ cd roblox_booster
 roblox_booster/
 ├── .gitignore
 ├── Cargo.toml
-├── src/
-│   └── main.rs
-└── assets/          (tùy chọn)
-    └── icon.png     (256x256px, tùy chọn)
+├── README.md
+├── QUICKSTART.md
+└── src/
+    └── main.rs
 ```
-
-**Lưu ý:** Thư mục `assets/` và file `icon.png` là tùy chọn. App sẽ chạy bình thường không có icon.
 
 3. **Build project:**
 ```bash
@@ -46,25 +42,11 @@ cargo build --release
 
 4. **Chạy ứng dụng:**
 ```bash
+# Chạy trực tiếp
 cargo run --release
-```
 
-### Cách 2: Build với script (Windows)
-
-1. **Copy tất cả files vào thư mục project**
-2. **Double-click `build.bat`** để build tự động
-3. **Script sẽ hỏi có muốn chạy app không**
-
-```bash
-# Hoặc chạy từ command line
-build.bat
-```
-
-### Cách 3: Clean build
-```bash
-# Nếu gặp lỗi, clean và build lại
-clean.bat
-build.bat
+# Hoặc chạy file .exe
+./target/release/roblox_booster.exe
 ```
 
 ## 🎮 Hướng dẫn sử dụng
@@ -99,16 +81,14 @@ App này hoạt động bằng cách:
 
 ```
 roblox_booster/
-├── .gitignore           # Git ignore file
-├── Cargo.toml           # Rust package config
-├── README.md            # Tài liệu chính
-├── QUICKSTART.md        # Hướng dẫn nhanh
-├── build.bat            # Build script (Windows)
-├── clean.bat            # Clean script (Windows)
-├── src/
-│   └── main.rs          # Source code chính
-└── assets/              # (Optional)
-    └── icon.png         # App icon (256x256px)
+├── .gitignore                # Git ignore file
+├── Cargo.toml                # Rust package config
+├── LICENSE                   # MIT License
+├── README.md                 # Tài liệu chính
+├── QUICKSTART.md             # Hướng dẫn nhanh
+├── ICON_CUSTOMIZATION.md     # Custom icon guide
+└── src/
+    └── main.rs               # Source code (bao gồm icon tích hợp)
 ```
 
 ## 🎨 Giao diện
@@ -133,6 +113,8 @@ roblox_booster/
 │   ✓ Status message...      │
 └─────────────────────────────┘
 ```
+
+**Icon:** App có icon gradient tích hợp sẵn (xanh dương → xanh lá). Muốn custom? Xem [ICON_CUSTOMIZATION.md](ICON_CUSTOMIZATION.md)
 
 ## 🔨 Build Commands
 
@@ -174,10 +156,6 @@ cargo build --release
 - Rebuild: `cargo clean && cargo build --release`
 - Cập nhật Rust: `rustup update`
 
-**Không có icon:**
-- Bỏ qua, app vẫn chạy bình thường
-- Hoặc tạo thư mục `assets/` và thêm file `icon.png` (256x256px)
-
 ## 🔒 An toàn
 
 - **Không cheat**: App không can thiệp vào game
@@ -192,7 +170,7 @@ App đã được tối ưu với:
 - **Codegen units = 1**: Build chậm hơn nhưng code nhanh hơn
 - **opt-level = 3**: Tối ưu hóa tối đa
 - **Process refresh mỗi 2 giây**: Tiết kiệm CPU
-- **Lazy icon loading**: Không crash nếu thiếu icon
+- **Icon tích hợp sẵn**: Không cần file ngoài, gradient xanh dương-xanh lá
 
 Build size sau tối ưu: ~2-3 MB
 

@@ -24,6 +24,7 @@ mkdir src
 Copy các files sau vào đúng vị trí:
 - `.gitignore` → `roblox_booster/.gitignore`
 - `Cargo.toml` → `roblox_booster/Cargo.toml`
+- `README.md` → `roblox_booster/README.md`
 - `src/main.rs` → `roblox_booster/src/main.rs`
 
 ### 3️⃣ Build & Run
@@ -44,6 +45,10 @@ cargo run --release
 roblox_booster/
 ├── .gitignore
 ├── Cargo.toml
+├── LICENSE
+├── README.md
+├── QUICKSTART.md
+├── ICON_CUSTOMIZATION.md
 ├── src/
 │   └── main.rs
 └── target/              (tự động tạo khi build)
@@ -58,16 +63,10 @@ roblox_booster/
 cargo build --release
 ```
 
-### Optimized Build (nhỏ gọn hơn)
-```bash
-# Build với strip symbols
-cargo build --release --config profile.release.strip=true
-```
-
 ### Portable Build
 ```bash
-# Static linking để chạy trên máy khác không cần cài Rust
-$env:RUSTFLAGS="-C target-feature=+crt-static"
+# Static linking để chạy trên máy khác không cần cài Rust (Windows)
+set RUSTFLAGS=-C target-feature=+crt-static
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
@@ -118,7 +117,7 @@ Bạn có thể copy file này ra desktop hoặc nơi khác để chạy độc 
 - **Build lần đầu sẽ lâu** (download dependencies) - lần sau nhanh hơn
 - **Release build nhanh và nhỏ hơn** debug build rất nhiều
 - **Chạy với Admin** để boost hiệu quả hơn (tùy chọn)
-- **Icon là optional** - app vẫn chạy không cần icon
+- **Icon tích hợp sẵn** - gradient xanh dương đến xanh lá đẹp mắt
 
 ## 🔗 Links hữu ích
 

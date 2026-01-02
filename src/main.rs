@@ -1,5 +1,5 @@
 use eframe::egui;
-use sysinfo::System;
+use sysinfo::{System, ProcessesToUpdate};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -34,7 +34,7 @@ impl RobloxBooster {
     fn update_status(&mut self) {
         if self.last_update.elapsed() > Duration::from_secs(2) {
             let mut sys = self.system.lock().unwrap();
-            sys.refresh_processes();
+            sys.refresh_processes(ProcessesToUpdate::All, true);
 
             // Kiểm tra Roblox có đang chạy không
             self.roblox_running = false;
@@ -274,26 +274,52 @@ impl eframe::App for RobloxBooster {
     }
 }
 
+fn create_icon() -> egui::IconData {
+    // Tạo icon 32x32 với màu gradient (xanh dương -> xanh lá)
+    let size = 32;
+    let mut rgba = Vec::with_capacity(size * size * 4);
+    
+    for y in 0..size {
+        for x in 0..size {
+            let center_x = size as f32 / 2.0;
+            let center_y = size as f32 / 2.0;
+            let dx = x as f32 - center_x;
+            let dy = y as f32 - center_y;
+            let dist = (dx * dx + dy * dy).sqrt();
+            let max_dist = center_x;
+            
+            if dist < max_dist - 2.0 {
+                // Gradient từ xanh dương đến xanh lá
+                let t = y as f32 / size as f32;
+                let r = (52.0 * (1.0 - t) + 46.0 * t) as u8;
+                let g = (152.0 * (1.0 - t) + 204.0 * t) as u8;
+                let b = (219.0 * (1.0 - t) + 113.0 * t) as u8;
+                rgba.extend_from_slice(&[r, g, b, 255]);
+            } else if dist < max_dist {
+                // Border trắng
+                rgba.extend_from_slice(&[255, 255, 255, 255]);
+            } else {
+                // Transparent
+                rgba.extend_from_slice(&[0, 0, 0, 0]);
+            }
+        }
+    }
+    
+    egui::IconData {
+        rgba,
+        width: size as u32,
+        height: size as u32,
+    }
+}
+
 fn main() -> Result<(), eframe::Error> {
-    // Load icon nếu có, không crash nếu không tìm thấy
-    let icon = if let Ok(icon_bytes) = std::fs::read("assets/icon.png") {
-        eframe::icon_data::from_png_bytes(&icon_bytes).ok()
-    } else {
-        None
-    };
+    let icon = create_icon();
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([400.0, 550.0])
             .with_resizable(false)
-            .with_icon(icon.unwrap_or_else(|| {
-                // Icon mặc định nếu không load được
-                eframe::IconData {
-                    rgba: vec![],
-                    width: 0,
-                    height: 0,
-                }
-            })),
+            .with_icon(icon),
         ..Default::default()
     };
 
