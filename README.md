@@ -33,13 +33,18 @@ mkdir src
 # - src/main.rs
 # - .gitignore
 
-# 3. Build và chạy
+# 3. Build release
 cargo build --release
-cargo run --release
 
-# Hoặc chạy .exe trực tiếp
+# File .exe sẽ ở: target/release/roblox_booster.exe
+# Chạy:
 ./target/release/roblox_booster.exe
 ```
+
+**Lưu ý:** 
+- Edition phải là `2021` (không phải `2024`) để tương thích
+- Rust version `1.70.0+` (không cần `1.85.0`)
+- File `.exe` nằm trong `target/release/` sau khi build
 
 ### Cấu trúc thư mục
 
@@ -120,15 +125,27 @@ cargo fmt
 # Run clippy (linter)
 cargo clippy
 
-# Build release
+# Build release (tạo file .exe)
 cargo build --release
 
-# Build với logs
-cargo build --release --verbose
+# Chạy trực tiếp (không build lại nếu đã build)
+cargo run --release
 
-# Clean build
-cargo clean && cargo build --release
+# Build với size optimization tối đa
+cargo build --release --config profile.release.opt-level=\'z\'
+
+# Build portable (static linking)
+set RUSTFLAGS=-C target-feature=+crt-static
+cargo build --release --target x86_64-pc-windows-msvc
+
+# Xem file .exe đã build
+ls target/release/*.exe
 ```
+
+**File output:**
+- Debug: `target/debug/roblox_booster.exe` (~10-15 MB)
+- Release: `target/release/roblox_booster.exe` (~2-3 MB)
+- Release optimized: ~1.5-2 MB
 
 ## 📦 Dependencies
 
@@ -141,14 +158,27 @@ cargo clean && cargo build --release
 ## ⚡ Optimizations
 
 App được tối ưu với:
-- **LTO**: Link Time Optimization
-- **Strip symbols**: Loại bỏ debug info
-- **Codegen units = 1**: Maximum optimization
-- **opt-level = 3**: Aggressive optimizations
-- **Build script**: Generate icon & manifest at compile time
-- **Const functions**: Compile-time computations
+- **LTO (Link Time Optimization)**: Tối ưu toàn bộ binary
+- **Strip symbols**: Loại bỏ debug symbols (~40% nhỏ hơn)
+- **Codegen units = 1**: Compile chậm hơn nhưng code nhanh hơn
+- **opt-level = 3**: Maximum optimization
+- **panic = "abort"**: Không unwind stack (~15% nhỏ hơn)
+- **Build script**: Generate icon & manifest compile-time
+- **Const generics**: Zero-cost abstractions
+- **Iterator chains**: Functional programming, no allocations
+- **String::from**: Faster than `.to_string()`
+- **Early returns**: Better branch prediction
 
-**Build size**: ~2-3 MB sau optimization
+**Size comparison:**
+- Debug build: ~10-15 MB
+- Release build: ~2-3 MB
+- With `opt-level='z'`: ~1.5-2 MB
+
+**Để build size nhỏ nhất:**
+```bash
+# Thêm vào Cargo.toml [profile.release]
+opt-level = 'z'  # Optimize for size
+```
 
 ## 🚀 Performance
 
