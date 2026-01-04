@@ -3,8 +3,8 @@
 **/*.rs.bk
 *.pdb
 
-# Cargo lock file (uncomment if building a library)
-# Cargo.lock
+# Cargo lock file (keep for binary projects)
+Cargo.lock
 
 # IDE files
 .vscode/
@@ -25,3 +25,6 @@ Desktop.ini
 # Backup files
 *.bak
 *.tmp
+
+# Don't ignore GitHub workflows
+!.github/
