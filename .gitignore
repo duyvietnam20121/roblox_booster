@@ -3,32 +3,25 @@
 **/*.rs.bk
 *.pdb
 
-# Cargo lock file (optional - uncomment if you want to ignore it)
+# Cargo lock file (uncomment if building a library)
 # Cargo.lock
 
-# IDEs
-.idea/
+# IDE files
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
 .DS_Store
 
-# Build outputs
-*.exe
-*.dll
-*.so
-*.dylib
-
 # Debug files
-*.dSYM/
+*.log
+debug/
+
+# OS specific
+Thumbs.db
+Desktop.ini
 
 # Backup files
 *.bak
 *.tmp
-*.log
-
-# OS generated files
-Thumbs.db
-.Spotlight-V100
-.Trashes
