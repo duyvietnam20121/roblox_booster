@@ -27,6 +27,11 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+panic = "abort"
+
+# Optimize for Windows GNU target
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-arg=-s"]
 
 [[bin]]
 name = "roblox_booster"

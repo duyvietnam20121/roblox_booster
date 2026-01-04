@@ -6,6 +6,10 @@
 # Cargo lock file (keep for binary projects)
 Cargo.lock
 
+# Built executables
+*.exe
+!roblox_booster.exe
+
 # IDE files
 .vscode/
 .idea/
