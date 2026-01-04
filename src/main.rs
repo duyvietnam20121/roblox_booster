@@ -16,7 +16,7 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Roblox Booster",
         options,
-        Box::new(|cc| Box::new(ui::RobloxBoosterApp::new(cc))),
+        Box::new(|cc| Ok(Box::new(ui::RobloxBoosterApp::new(cc)))),
     )
 }
 

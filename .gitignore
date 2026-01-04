@@ -29,6 +29,3 @@ Desktop.ini
 # Backup files
 *.bak
 *.tmp
-
-# Don't ignore GitHub workflows
-!.github/

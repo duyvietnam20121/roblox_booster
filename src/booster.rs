@@ -1,4 +1,4 @@
-use sysinfo::{System, Pid};
+use sysinfo::{System, Pid, ProcessesToUpdate};
 use std::collections::HashSet;
 use crate::config::Config;
 
@@ -40,18 +40,18 @@ impl SystemBooster {
             return None;
         }
         
-        self.system.refresh_processes();
+        self.system.refresh_processes(ProcessesToUpdate::All);
         let mut new_processes = Vec::new();
         
         for (pid, process) in self.system.processes() {
-            let name = process.name().to_lowercase();
+            let name = process.name().to_string_lossy().to_lowercase();
             let pid_u32 = pid.as_u32();
             
             if (name.contains("roblox") && !name.contains("booster")) 
                 && !self.roblox_pids.contains(&pid_u32) {
                 if self.boost_process(pid_u32).is_ok() {
                     self.roblox_pids.insert(pid_u32);
-                    new_processes.push(process.name().to_string());
+                    new_processes.push(process.name().to_string_lossy().to_string());
                 }
             }
         }
@@ -77,12 +77,12 @@ impl SystemBooster {
         
         // Find and boost Roblox processes
         for (pid, process) in self.system.processes() {
-            let name = process.name().to_lowercase();
+            let name = process.name().to_string_lossy().to_lowercase();
             if name.contains("roblox") && !name.contains("booster") {
                 let pid_u32 = pid.as_u32();
                 if self.boost_process(pid_u32).is_ok() {
                     self.roblox_pids.insert(pid_u32);
-                    optimizations.push(format!("Boosted {}", process.name()));
+                    optimizations.push(format!("Boosted {}", process.name().to_string_lossy()));
                 }
             }
         }
@@ -115,11 +115,11 @@ impl SystemBooster {
     
     /// Get current Roblox process count
     pub fn get_roblox_process_count(&mut self) -> usize {
-        self.system.refresh_processes();
+        self.system.refresh_processes(ProcessesToUpdate::All);
         let count = self.system.processes()
             .iter()
             .filter(|(_, p)| {
-                let name = p.name().to_lowercase();
+                let name = p.name().to_string_lossy().to_lowercase();
                 name.contains("roblox") && !name.contains("booster")
             })
             .count();
