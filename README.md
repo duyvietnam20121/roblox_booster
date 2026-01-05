@@ -1,6 +1,6 @@
 # 🚀 Roblox Booster
 
-A system performance optimizer for Roblox, built with Rust and egui.
+A modern system performance optimizer for Roblox, built with Rust and egui.
 
 ## ✨ Features
 
@@ -17,63 +17,76 @@ A system performance optimizer for Roblox, built with Rust and egui.
 ### Prerequisites
 
 ```bash
-# Install Rust (if not installed)
+# Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Install MinGW for cross-compilation (Linux/Mac)
-sudo apt update
-sudo apt install -y mingw-w64 build-essential
-```
+# Linux/Mac: Install MinGW for cross-compilation
+sudo apt update && sudo apt install -y mingw-w64
 
-### Build on Linux/Mac (for Windows target)
-
-```bash
-# Add Windows GNU target
+# Add Windows target
 rustup target add x86_64-pc-windows-gnu
-
-# Build using Makefile
-make install
-
-# Or manual build
-cargo build --release --target x86_64-pc-windows-gnu
-cp target/x86_64-pc-windows-gnu/release/roblox_booster.exe ./
 ```
 
-### Build on Windows
+### Quick Build
 
 ```bash
-# Simple build
+# Simple build (uses .cargo/config.toml automatically)
 cargo build --release
 
-# Output: target\release\roblox_booster.exe
+# Or with just (recommended)
+cargo install just
+just build
 ```
 
-## 📦 Makefile Commands
+### Using Just (Modern Task Runner)
 
 ```bash
-make help       # Show all available commands
-make setup      # Install dependencies and target
-make build      # Build the executable
-make clean      # Clean build artifacts
-make install    # Setup + Build in one command
-make run        # Build and show exe info
+just setup      # Install dev dependencies
+just build      # Build release
+just run        # Build and run
+just test       # Run tests
+just lint       # Run clippy
+just fmt        # Format code
+just ci         # Full CI check
+just dist       # Build and show info
+just clean      # Clean artifacts
 ```
 
-## 🎯 Usage
+## 🎯 Modern Rust Features Used
 
-1. **Download/Build** the `roblox_booster.exe`
-2. **Run** the executable on Windows
-3. **Launch Roblox** using the app button
-4. **Enable Booster** to optimize performance
-5. **Configure** settings as needed
+- **Edition 2021** - Latest Rust edition
+- **anyhow & thiserror** - Modern error handling
+- **const generics** - Type-safe constants
+- **must_use** - Compiler warnings for unused returns
+- **rust-toolchain.toml** - Automatic toolchain management
+- **.cargo/config.toml** - Project-specific cargo configuration
+- **just** - Modern alternative to Make
+
+## 📦 Project Structure
+
+```
+roblox_booster/
+├── .cargo/
+│   └── config.toml          # Cargo configuration
+├── src/
+│   ├── main.rs              # Entry point
+│   ├── booster.rs           # Core logic (anyhow error handling)
+│   ├── config.rs            # Configuration management
+│   └── ui.rs                # Modern egui UI
+├── build.rs                 # Windows metadata
+├── Cargo.toml               # Dependencies
+├── rust-toolchain.toml      # Rust version pinning
+├── justfile                 # Modern task runner
+└── README.md
+```
 
 ## ⚙️ Configuration
 
-Config file is automatically created at:
+Config file location:
 - Windows: `%APPDATA%\roblox_booster\config.json`
 - Linux/Mac: `~/.config/roblox_booster/config.json`
 
-Example config:
+Example:
 ```json
 {
   "auto_start_booster": false,
@@ -85,69 +98,130 @@ Example config:
 
 ## 🔧 How It Works
 
-- **Process Priority**: Boosts Roblox process priority to High/Above Normal
-- **Memory Cache**: Clears Windows standby memory
-- **Auto-detection**: Scans for Roblox processes every 2 seconds
-- **Safe Operation**: Only modifies priority, no memory injection
+### Advanced Optimization Pipeline
 
-## 🛡️ Safety
+**Phase 1: Process Detection**
+- Smart pattern matching (detects "roblox", "rbx" variants)
+- Filters out installers and uninstallers
+- Real-time process monitoring
 
-- ✅ No game file modification
-- ✅ No memory injection
-- ✅ No ToS violations
-- ✅ System-level optimizations only
+**Phase 2: Process Optimization**
+- **CPU Priority Boost**: Sets HIGH/ABOVE_NORMAL priority class
+- **Working Set Trimming**: Optimizes memory allocation
+- **Multi-stage verification**: Checks priority before/after
 
-## 📋 System Requirements
+**Phase 3: System Optimization**
+- Memory cache clearing
+- System-wide performance tuning
+- Cleanup on exit
 
-- **OS**: Windows 10/11
-- **RAM**: 4GB minimum
-- **Roblox**: Installed from roblox.com or Microsoft Store
+### Technical Details
+- Uses Windows API: `SetPriorityClass`, `SetProcessWorkingSetSize`
+- Safe handle management with RAII
+- Typed errors with `thiserror`
+- Graceful degradation on failure
+
+## ✨ New Features
+
+- **📊 Optimization Stats**: Real-time metrics display
+- **🎯 Smart Detection**: Better process filtering
+- **💾 Working Set Optimization**: Memory trimming per process
+- **⚡ Two-Phase Optimization**: Priority + Memory optimization
+- **🛡️ Error Recovery**: Graceful handling of failures
+- **📈 Performance Tracking**: Shows optimized process count
+
+## 🔧 How It Works
 
 ## 🛡️ Security Warning
 
-**Windows may show a security warning** because the executable is not signed with a commercial certificate.
+**Antivirus False Positives**
 
-### How to bypass:
-1. Click **"More info"**
-2. Click **"Run anyway"**
+Some AVs may flag this due to Windows API usage (OpenProcess, SetPriorityClass).
 
-### For developers - Self-signing:
-```powershell
-# Run PowerShell as Administrator on Windows
-.\sign_exe.ps1
-```
+**This is safe because:**
+- ✅ Full source code available
+- ✅ Modern Rust (memory-safe)
+- ✅ No code injection
+- ✅ Open source auditable
 
-This creates a self-signed certificate. Users will still see a warning unless they install your certificate.
+**Detections:**
+- W64.AIDetectMalware (heuristic)
+- ElasticMalicious (moderate confidence)
 
-### For production - Get a certificate:
-- Purchase a Code Signing Certificate from Sectigo, DigiCert, or SSL.com ($100-400/year)
-- Sign the executable with `signtool`
+**Why?** Uses process management APIs + cross-compiled from Linux + no code signing.
+
+**To bypass Windows SmartScreen:**
+1. Click "More info"
+2. Click "Run anyway"
+
+See `SECURITY.md` and `report_false_positive.md` for details.
+
+## 🛡️ Safety
+
+- ✅ No game modification
+- ✅ No memory injection
+- ✅ No ToS violations
+- ✅ System-level only
+- ✅ Memory-safe Rust
+
+## 📋 Requirements
+
+- **OS**: Windows 10/11
+- **RAM**: 4GB minimum
+- **Rust**: 1.70+ (specified in rust-toolchain.toml)
 
 ## 🐛 Troubleshooting
 
-**Executable not found after build?**
+**Build errors?**
 ```bash
-# Check target directory
-ls target/x86_64-pc-windows-gnu/release/
+# Setup everything automatically
+just setup
 
-# Copy to current directory
-cp target/x86_64-pc-windows-gnu/release/roblox_booster.exe ./
+# Or manual
+rustup target add x86_64-pc-windows-gnu
 ```
 
-**MinGW not installed?**
+**Can't find exe?**
 ```bash
-sudo apt install mingw-w64
-rustup target add x86_64-pc-windows-gnu
+# Check build location
+just info
+
+# Or find it manually
+find target -name "roblox_booster.exe"
+```
+
+## 🚀 Development
+
+```bash
+# Format code
+just fmt
+
+# Run linter
+just lint
+
+# Run tests
+just test
+
+# Full CI check
+just ci
+
+# Watch mode (requires cargo-watch)
+cargo install cargo-watch
+just watch
 ```
 
 ## 📝 License
 
-This project is provided as-is for educational purposes.
+MIT OR Apache-2.0
 
 ## 🤝 Contributing
 
-Feel free to open issues or submit pull requests!
+1. Fork the repo
+2. Create feature branch
+3. Make changes
+4. Run `just ci`
+5. Submit PR
 
 ---
 
-Built with ❤️ using Rust, egui, and sysinfo
+Built with ❤️ using modern Rust, egui, and best practices

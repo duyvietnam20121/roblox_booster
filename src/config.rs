@@ -1,6 +1,6 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 /// Application configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,61 +27,61 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Get config file path
+    /// Get config file path using standard directories
     fn get_config_path() -> PathBuf {
-        let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        let mut path = if cfg!(target_os = "windows") {
+            std::env::var("APPDATA")
+                .map(PathBuf::from)
+                .unwrap_or_else(|_| PathBuf::from("."))
+        } else {
+            std::env::var("HOME")
+                .map(|h| {
+                    let mut p = PathBuf::from(h);
+                    p.push(".config");
+                    p
+                })
+                .unwrap_or_else(|_| PathBuf::from("."))
+        };
+        
         path.push("roblox_booster");
-        fs::create_dir_all(&path).ok();
         path.push("config.json");
         path
     }
     
     /// Load configuration from file
+    #[must_use]
     pub fn load() -> Self {
         let path = Self::get_config_path();
         
-        if let Ok(contents) = fs::read_to_string(&path) {
-            if let Ok(config) = serde_json::from_str(&contents) {
-                return config;
-            }
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
         }
         
-        // Return default if file doesn't exist or is invalid
-        let config = Self::default();
-        let _ = config.save(); // Try to save default config
-        config
+        fs::read_to_string(&path)
+            .ok()
+            .and_then(|contents| serde_json::from_str(&contents).ok())
+            .unwrap_or_else(|| {
+                let config = Self::default();
+                let _ = config.save();
+                config
+            })
     }
     
     /// Save configuration to file
-    pub fn save(&self) -> Result<(), String> {
+    pub fn save(&self) -> Result<()> {
         let path = Self::get_config_path();
+        
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).context("Failed to create config directory")?;
+        }
+        
         let json = serde_json::to_string_pretty(self)
-            .map_err(|e| format!("Failed to serialize config: {}", e))?;
+            .context("Failed to serialize config")?;
         
         fs::write(&path, json)
-            .map_err(|e| format!("Failed to write config: {}", e))?;
+            .context("Failed to write config file")?;
         
         Ok(())
-    }
-}
-
-// Simple cross-platform dirs implementation
-mod dirs {
-    use std::path::PathBuf;
-    
-    pub fn config_dir() -> Option<PathBuf> {
-        #[cfg(target_os = "windows")]
-        {
-            std::env::var("APPDATA").ok().map(PathBuf::from)
-        }
-        
-        #[cfg(not(target_os = "windows"))]
-        {
-            std::env::var("HOME").ok().map(|h| {
-                let mut path = PathBuf::from(h);
-                path.push(".config");
-                path
-            })
-        }
     }
 }

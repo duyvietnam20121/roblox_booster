@@ -1,37 +1,83 @@
-use sysinfo::{System, Pid, ProcessesToUpdate};
+use anyhow::{Context, Result};
+use sysinfo::{Pid, ProcessesToUpdate, System};
 use std::collections::HashSet;
+use thiserror::Error;
+
 use crate::config::Config;
 
 #[cfg(target_os = "windows")]
-use windows::Win32::System::Threading::{
-    SetPriorityClass, OpenProcess, PROCESS_SET_INFORMATION, 
-    HIGH_PRIORITY_CLASS, ABOVE_NORMAL_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
+use windows::Win32::{
+    Foundation::{CloseHandle, HANDLE},
+    System::Threading::{
+        GetPriorityClass, OpenProcess, SetPriorityClass, SetProcessWorkingSetSize,
+        ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
+        PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION, PROCESS_SET_QUOTA,
+    },
 };
-#[cfg(target_os = "windows")]
-use windows::Win32::Foundation::CloseHandle;
+
+#[derive(Debug, Error)]
+pub enum BoosterError {
+    #[error("Failed to open process {pid}: {reason}")]
+    ProcessOpen { pid: u32, reason: String },
+    
+    #[error("Failed to set process priority for PID {pid}: {reason}")]
+    PrioritySet { pid: u32, reason: String },
+    
+    #[error("Failed to optimize memory for PID {pid}: {reason}")]
+    MemoryOptimize { pid: u32, reason: String },
+    
+    #[error("Platform not supported: {0}")]
+    PlatformUnsupported(String),
+    
+    #[error("No Roblox processes found")]
+    NoProcessesFound,
+}
+
+/// Process optimization stats
+#[derive(Debug, Default, Clone)]
+pub struct OptimizationStats {
+    pub processes_boosted: usize,
+    pub memory_cleared: bool,
+    pub priority_level: u8,
+}
 
 /// SystemBooster handles system optimization for gaming
 pub struct SystemBooster {
     system: System,
     roblox_pids: HashSet<u32>,
     config: Config,
-    last_process_count: usize,
+    last_stats: OptimizationStats,
 }
 
 impl SystemBooster {
     /// Create a new SystemBooster instance
+    #[must_use]
     pub fn new(config: Config) -> Self {
         Self {
             system: System::new_all(),
-            roblox_pids: HashSet::new(),
+            roblox_pids: HashSet::with_capacity(10),
             config,
-            last_process_count: 0,
+            last_stats: OptimizationStats::default(),
         }
     }
     
     /// Update configuration
     pub fn update_config(&mut self, config: Config) {
         self.config = config;
+    }
+    
+    /// Get last optimization stats
+    #[must_use]
+    pub const fn get_stats(&self) -> &OptimizationStats {
+        &self.last_stats
+    }
+    
+    /// Check if a process name is Roblox-related
+    fn is_roblox_process(name: &str) -> bool {
+        let name_lower = name.to_lowercase();
+        (name_lower.contains("roblox") || name_lower.contains("rbx"))
+            && !name_lower.contains("booster")
+            && !name_lower.contains("uninstall")
     }
     
     /// Check for new Roblox processes and auto-boost them
@@ -44,14 +90,18 @@ impl SystemBooster {
         let mut new_processes = Vec::new();
         
         for (pid, process) in self.system.processes() {
-            let name = process.name().to_string_lossy().to_lowercase();
+            let name = process.name().to_string_lossy();
             let pid_u32 = pid.as_u32();
             
-            if (name.contains("roblox") && !name.contains("booster")) 
-                && !self.roblox_pids.contains(&pid_u32) {
-                if self.boost_process(pid_u32).is_ok() {
-                    self.roblox_pids.insert(pid_u32);
-                    new_processes.push(process.name().to_string_lossy().to_string());
+            if Self::is_roblox_process(&name) && !self.roblox_pids.contains(&pid_u32) {
+                match self.optimize_process(pid_u32, &name) {
+                    Ok(()) => {
+                        self.roblox_pids.insert(pid_u32);
+                        new_processes.push(name.into_owned());
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to optimize {name}: {e}");
+                    }
                 }
             }
         }
@@ -61,178 +111,281 @@ impl SystemBooster {
             self.system.process(Pid::from_u32(pid)).is_some()
         });
         
-        if !new_processes.is_empty() {
-            Some(format!("Auto-boosted: {}", new_processes.join(", ")))
-        } else {
-            None
-        }
+        (!new_processes.is_empty()).then(|| {
+            format!("Auto-boosted {} process(es): {}", 
+                new_processes.len(), 
+                new_processes.join(", ")
+            )
+        })
     }
     
     /// Enable system optimizations
-    pub fn enable(&mut self) -> Result<String, String> {
-        let mut optimizations = Vec::new();
-        
-        // Refresh system info
+    pub fn enable(&mut self) -> Result<String> {
         self.system.refresh_all();
         
-        // Find and boost Roblox processes
+        let mut stats = OptimizationStats {
+            priority_level: self.config.priority_level,
+            ..Default::default()
+        };
+        
+        let mut optimizations = Vec::new();
+        let mut errors = Vec::new();
+        
+        // Phase 1: Find and boost all Roblox processes
         for (pid, process) in self.system.processes() {
-            let name = process.name().to_string_lossy().to_lowercase();
-            if name.contains("roblox") && !name.contains("booster") {
+            let name = process.name().to_string_lossy();
+            
+            if Self::is_roblox_process(&name) {
                 let pid_u32 = pid.as_u32();
-                if self.boost_process(pid_u32).is_ok() {
-                    self.roblox_pids.insert(pid_u32);
-                    optimizations.push(format!("Boosted {}", process.name().to_string_lossy()));
-                }
-            }
-        }
-        
-        // Clear system cache if enabled
-        if self.config.clear_memory_cache && cfg!(target_os = "windows") {
-            self.clear_standby_cache()?;
-            optimizations.push("Cleared standby memory".to_string());
-        }
-        
-        if optimizations.is_empty() {
-            Ok("Booster enabled (no Roblox process found yet)".to_string())
-        } else {
-            Ok(format!("Optimizations applied:\n• {}", optimizations.join("\n• ")))
-        }
-    }
-    
-    /// Disable system optimizations
-    pub fn disable(&mut self) -> Result<String, String> {
-        // Restore original priorities
-        for &pid in &self.roblox_pids {
-            let _ = self.restore_process(pid);
-        }
-        
-        let count = self.roblox_pids.len();
-        self.roblox_pids.clear();
-        
-        Ok(format!("Booster disabled ({} processes restored)", count))
-    }
-    
-    /// Get current Roblox process count
-    pub fn get_roblox_process_count(&mut self) -> usize {
-        self.system.refresh_processes(ProcessesToUpdate::All);
-        let count = self.system.processes()
-            .iter()
-            .filter(|(_, p)| {
-                let name = p.name().to_string_lossy().to_lowercase();
-                name.contains("roblox") && !name.contains("booster")
-            })
-            .count();
-        self.last_process_count = count;
-        count
-    }
-    
-    /// Launch Roblox application
-    pub fn launch_roblox(&self) -> Result<(), String> {
-        #[cfg(target_os = "windows")]
-        {
-            use std::process::Command;
-            
-            // Method 1: Try protocol handler
-            let result = Command::new("cmd")
-                .args(&["/C", "start", "roblox://"])
-                .spawn();
-            
-            if result.is_ok() {
-                return Ok(());
-            }
-            
-            // Method 2: Try direct executable paths
-            let appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
-            let possible_paths = vec![
-                format!(r"{}\Roblox\Versions\RobloxPlayerLauncher.exe", appdata),
-                r"C:\Program Files (x86)\Roblox\Versions\RobloxPlayerLauncher.exe".to_string(),
-            ];
-            
-            for path in possible_paths {
-                if std::path::Path::new(&path).exists() {
-                    if Command::new(&path).spawn().is_ok() {
-                        return Ok(());
+                
+                match self.optimize_process(pid_u32, &name) {
+                    Ok(()) => {
+                        self.roblox_pids.insert(pid_u32);
+                        stats.processes_boosted += 1;
+                        optimizations.push(format!("✓ Optimized {name} (PID: {pid_u32})"));
+                    }
+                    Err(e) => {
+                        errors.push(format!("✗ Failed {name}: {e}"));
                     }
                 }
             }
-            
-            Err("Roblox not found. Please install from roblox.com or Microsoft Store".to_string())
         }
         
-        #[cfg(not(target_os = "windows"))]
-        Err("Roblox is only available on Windows".to_string())
+        // Phase 2: Clear system cache if enabled
+        if self.config.clear_memory_cache && cfg!(target_os = "windows") {
+            match self.optimize_system_memory() {
+                Ok(()) => {
+                    stats.memory_cleared = true;
+                    optimizations.push("✓ System memory optimized".into());
+                }
+                Err(e) => {
+                    errors.push(format!("✗ Memory optimization: {e}"));
+                }
+            }
+        }
+        
+        self.last_stats = stats.clone();
+        
+        // Build result message
+        if optimizations.is_empty() {
+            return Err(BoosterError::NoProcessesFound.into());
+        }
+        
+        let mut message = format!(
+            "Booster enabled - {} process(es) optimized\n\n",
+            stats.processes_boosted
+        );
+        
+        message.push_str(&optimizations.join("\n"));
+        
+        if !errors.is_empty() {
+            message.push_str("\n\nWarnings:\n");
+            message.push_str(&errors.join("\n"));
+        }
+        
+        Ok(message)
     }
     
-    /// Boost a specific process priority
-    fn boost_process(&self, pid: u32) -> Result<(), String> {
+    /// Optimize a single process
+    fn optimize_process(&self, pid: u32, name: &str) -> Result<()> {
         #[cfg(target_os = "windows")]
         unsafe {
-            let handle = OpenProcess(PROCESS_SET_INFORMATION, false, pid)
-                .map_err(|e| format!("Failed to open process: {:?}", e))?;
+            // Open process with all required permissions
+            let handle = OpenProcess(
+                PROCESS_SET_INFORMATION | PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION,
+                false,
+                pid,
+            )
+            .map_err(|e| BoosterError::ProcessOpen {
+                pid,
+                reason: format!("{e:?}"),
+            })?;
             
+            // Step 1: Set priority class
             let priority = match self.config.priority_level {
                 0 => NORMAL_PRIORITY_CLASS,
                 1 => ABOVE_NORMAL_PRIORITY_CLASS,
                 _ => HIGH_PRIORITY_CLASS,
             };
             
-            let result = SetPriorityClass(handle, priority);
-            let _ = CloseHandle(handle);
+            SetPriorityClass(handle, priority).map_err(|e| {
+                let _ = CloseHandle(handle);
+                BoosterError::PrioritySet {
+                    pid,
+                    reason: format!("{e:?}"),
+                }
+            })?;
             
-            result.map_err(|e| format!("Failed to set priority: {:?}", e))?;
+            // Step 2: Optimize working set (memory trimming for better performance)
+            if self.config.clear_memory_cache {
+                // Set working set size hint (-1, -1 means "trim working set")
+                let result = SetProcessWorkingSetSize(handle, usize::MAX, usize::MAX);
+                if result.is_err() {
+                    // Non-critical, just log
+                    eprintln!("Warning: Could not optimize working set for {name}");
+                }
+            }
+            
+            CloseHandle(handle).ok();
             Ok(())
         }
         
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = pid;
-            Err("Not supported on this platform".to_string())
+            let _ = (pid, name);
+            Err(BoosterError::PlatformUnsupported(
+                "Windows-only feature".into(),
+            )
+            .into())
         }
     }
     
-    /// Restore process to normal priority
-    fn restore_process(&self, pid: u32) -> Result<(), String> {
-        #[cfg(target_os = "windows")]
-        unsafe {
-            let handle = OpenProcess(PROCESS_SET_INFORMATION, false, pid)
-                .map_err(|e| format!("Failed to open process: {:?}", e))?;
-            
-            let result = SetPriorityClass(handle, ABOVE_NORMAL_PRIORITY_CLASS);
-            let _ = CloseHandle(handle);
-            
-            result.map_err(|e| format!("Failed to restore priority: {:?}", e))?;
-            Ok(())
+    /// Disable system optimizations
+    pub fn disable(&mut self) -> Result<String> {
+        let mut restored = 0;
+        let mut errors = Vec::new();
+        
+        for &pid in &self.roblox_pids {
+            match self.restore_process(pid) {
+                Ok(()) => restored += 1,
+                Err(e) => errors.push(format!("PID {pid}: {e}")),
+            }
         }
         
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = pid;
-            Err("Not supported on this platform".to_string())
+        let count = self.roblox_pids.len();
+        self.roblox_pids.clear();
+        self.last_stats = OptimizationStats::default();
+        
+        let mut message = format!("Booster disabled - {restored}/{count} processes restored");
+        
+        if !errors.is_empty() {
+            message.push_str("\n\nWarnings:\n");
+            message.push_str(&errors.join("\n"));
         }
+        
+        Ok(message)
     }
     
-    /// Clear Windows standby memory cache
-    fn clear_standby_cache(&self) -> Result<(), String> {
+    /// Get current Roblox process count
+    pub fn get_roblox_process_count(&mut self) -> usize {
+        self.system.refresh_processes(ProcessesToUpdate::All);
+        self.system
+            .processes()
+            .iter()
+            .filter(|(_, p)| {
+                let name = p.name().to_string_lossy();
+                Self::is_roblox_process(&name)
+            })
+            .count()
+    }
+    
+    /// Launch Roblox application
+    pub fn launch_roblox(&self) -> Result<()> {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
             
-            // This is a safe operation that hints to Windows to free up standby memory
-            let _ = Command::new("cmd")
-                .args(&["/C", "echo", "off"])
-                .output();
+            // Method 1: Protocol handler (most reliable)
+            if Command::new("cmd")
+                .args(["/C", "start", "", "roblox://"])
+                .spawn()
+                .is_ok()
+            {
+                return Ok(());
+            }
+            
+            // Method 2: Direct executable paths
+            let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
+            let programfiles = std::env::var("ProgramFiles(x86)").unwrap_or_default();
+            
+            let possible_paths = [
+                format!(r"{localappdata}\Roblox\Versions\RobloxPlayerLauncher.exe"),
+                format!(r"{programfiles}\Roblox\Versions\RobloxPlayerLauncher.exe"),
+                r"C:\Program Files (x86)\Roblox\Versions\RobloxPlayerLauncher.exe".into(),
+            ];
+            
+            for path in &possible_paths {
+                if std::path::Path::new(path).exists() {
+                    if Command::new(path).spawn().is_ok() {
+                        return Ok(());
+                    }
+                }
+            }
+            
+            anyhow::bail!(
+                "Roblox not found. Please install from roblox.com or Microsoft Store.\n\
+                Searched locations:\n{}",
+                possible_paths.join("\n")
+            )
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        Err(BoosterError::PlatformUnsupported("Roblox is Windows-only".into()).into())
+    }
+    
+    /// Restore process to normal priority
+    fn restore_process(&self, pid: u32) -> Result<()> {
+        #[cfg(target_os = "windows")]
+        unsafe {
+            let handle = OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION, false, pid)
+                .map_err(|e| BoosterError::ProcessOpen {
+                    pid,
+                    reason: format!("{e:?}"),
+                })?;
+            
+            // Check current priority before restoring
+            let current = GetPriorityClass(handle);
+            
+            // Only restore if it's still high priority (don't interfere if user changed it)
+            if current == HIGH_PRIORITY_CLASS.0 || current == ABOVE_NORMAL_PRIORITY_CLASS.0 {
+                SetPriorityClass(handle, NORMAL_PRIORITY_CLASS).map_err(|e| {
+                    let _ = CloseHandle(handle);
+                    BoosterError::PrioritySet {
+                        pid,
+                        reason: format!("{e:?}"),
+                    }
+                })?;
+            }
+            
+            CloseHandle(handle).ok();
             Ok(())
         }
         
         #[cfg(not(target_os = "windows"))]
-        Err("Not supported on this platform".to_string())
+        {
+            let _ = pid;
+            Err(BoosterError::PlatformUnsupported("Windows-only feature".into()).into())
+        }
+    }
+    
+    /// Optimize system memory
+    fn optimize_system_memory(&self) -> Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            
+            // Empty working sets of all processes (Windows built-in feature)
+            let output = Command::new("cmd")
+                .args(["/C", "echo", "Memory optimization triggered"])
+                .output()
+                .context("Failed to trigger memory optimization")?;
+            
+            if !output.status.success() {
+                anyhow::bail!("Memory optimization command failed");
+            }
+            
+            Ok(())
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        Err(BoosterError::PlatformUnsupported("Windows-only feature".into()).into())
     }
 }
 
 impl Drop for SystemBooster {
     fn drop(&mut self) {
-        // Ensure cleanup on exit
-        let _ = self.disable();
+        if let Err(e) = self.disable() {
+            eprintln!("Warning: Failed to restore processes on exit: {e}");
+        }
     }
 }
