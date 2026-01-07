@@ -109,7 +109,14 @@ impl RobloxBoosterApp {
             } else {
                 egui::Color32::GRAY
             };
-            ui.colored_label(color, if self.booster_enabled { "ACTIVE" } else { "INACTIVE" });
+            ui.colored_label(
+                color,
+                if self.booster_enabled {
+                    "ACTIVE"
+                } else {
+                    "INACTIVE"
+                },
+            );
         });
         
         // Process count
@@ -180,11 +187,9 @@ impl RobloxBoosterApp {
             
             ui.add_space(12.0);
             
-            let launch_button = egui::Button::new(
-                egui::RichText::new("🎮 Launch Roblox")
-                    .size(15.0),
-            )
-            .min_size(BUTTON_SIZE);
+            let launch_button =
+                egui::Button::new(egui::RichText::new("🎮 Launch Roblox").size(15.0))
+                    .min_size(BUTTON_SIZE);
             
             if ui.add(launch_button).clicked() {
                 self.launch_roblox();
@@ -227,7 +232,10 @@ impl RobloxBoosterApp {
                 ui.add_space(10.0);
                 
                 config_changed |= ui
-                    .checkbox(&mut self.config.auto_start_booster, "Auto-start booster on launch")
+                    .checkbox(
+                        &mut self.config.auto_start_booster,
+                        "Auto-start booster on launch",
+                    )
                     .on_hover_text("Automatically enable booster when app starts")
                     .changed();
                 
@@ -249,10 +257,7 @@ impl RobloxBoosterApp {
                 ui.separator();
                 ui.add_space(10.0);
                 
-                ui.label(
-                    egui::RichText::new("Process Priority Level:")
-                        .strong(),
-                );
+                ui.label(egui::RichText::new("Process Priority Level:").strong());
                 ui.add_space(5.0);
                 
                 let mut priority = self.config.priority_level as usize;

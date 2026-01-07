@@ -7,17 +7,24 @@ fn main() {
         
         // Comprehensive metadata helps AV understand the file
         res.set("ProductName", "Roblox Booster")
-            .set("FileDescription", "System performance optimizer for Roblox - Safe and legitimate tool")
+            .set(
+                "FileDescription",
+                "System performance optimizer for Roblox - Safe and legitimate tool",
+            )
             .set("CompanyName", "Open Source Community")
             .set("LegalCopyright", "Copyright © 2026 - Open Source")
             .set("ProductVersion", "0.1.0")
             .set("FileVersion", "0.1.0.0")
             .set("InternalName", "roblox_booster")
             .set("OriginalFilename", "roblox_booster.exe")
-            .set("Comments", "Safe system optimizer - No malware - Open source on GitHub");
+            .set(
+                "Comments",
+                "Safe system optimizer - No malware - Open source on GitHub",
+            );
         
         // Set manifest to hide console (redundant with windows_subsystem but good to have)
-        res.set_manifest(r#"
+        res.set_manifest(
+            r#"
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity
     version="0.1.0.0"
@@ -34,8 +41,9 @@ fn main() {
     </security>
   </trustInfo>
 </assembly>
-"#);
-        
+"#,
+        );
+
         // Set icon if available (helps with trust)
         if std::path::Path::new("icon.ico").exists() {
             res.set_icon("icon.ico");

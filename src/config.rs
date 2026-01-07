@@ -76,11 +76,9 @@ impl Config {
             fs::create_dir_all(parent).context("Failed to create config directory")?;
         }
         
-        let json = serde_json::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let json = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
         
-        fs::write(&path, json)
-            .context("Failed to write config file")?;
+        fs::write(&path, json).context("Failed to write config file")?;
         
         Ok(())
     }

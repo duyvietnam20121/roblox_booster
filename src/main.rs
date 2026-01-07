@@ -36,9 +36,9 @@ fn load_icon() -> egui::IconData {
             let dist = (dx * dx + dy * dy).sqrt();
             
             if dist < 14.0 {
-                rgba[idx] = 50;      // R
+                rgba[idx] = 50; // R
                 rgba[idx + 1] = 200; // G
-                rgba[idx + 2] = 50;  // B
+                rgba[idx + 2] = 50; // B
                 rgba[idx + 3] = 255; // A
             }
         }

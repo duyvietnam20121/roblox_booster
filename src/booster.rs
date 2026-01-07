@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
-use sysinfo::{Pid, ProcessesToUpdate, System};
 use std::collections::HashSet;
+use sysinfo::{Pid, ProcessesToUpdate, System};
 use thiserror::Error;
 
 use crate::config::Config;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
-    Foundation::{CloseHandle, HANDLE},
+    Foundation::CloseHandle,
     System::Threading::{
         GetPriorityClass, OpenProcess, SetPriorityClass, SetProcessWorkingSetSize,
         ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
@@ -107,13 +107,13 @@ impl SystemBooster {
         }
         
         // Clean up dead processes
-        self.roblox_pids.retain(|&pid| {
-            self.system.process(Pid::from_u32(pid)).is_some()
-        });
+        self.roblox_pids
+            .retain(|&pid| self.system.process(Pid::from_u32(pid)).is_some());
         
         (!new_processes.is_empty()).then(|| {
-            format!("Auto-boosted {} process(es): {}", 
-                new_processes.len(), 
+            format!(
+                "Auto-boosted {} process(es): {}",
+                new_processes.len(),
                 new_processes.join(", ")
             )
         })
@@ -233,10 +233,7 @@ impl SystemBooster {
         #[cfg(not(target_os = "windows"))]
         {
             let _ = (pid, name);
-            Err(BoosterError::PlatformUnsupported(
-                "Windows-only feature".into(),
-            )
-            .into())
+            Err(BoosterError::PlatformUnsupported("Windows-only feature".into()).into())
         }
     }
     
@@ -320,18 +317,22 @@ impl SystemBooster {
         }
         
         #[cfg(not(target_os = "windows"))]
-        Err(BoosterError::PlatformUnsupported("Roblox is Windows-only".into()).into())
+        anyhow::bail!("Roblox is Windows-only")
     }
     
     /// Restore process to normal priority
     fn restore_process(&self, pid: u32) -> Result<()> {
         #[cfg(target_os = "windows")]
         unsafe {
-            let handle = OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION, false, pid)
-                .map_err(|e| BoosterError::ProcessOpen {
-                    pid,
-                    reason: format!("{e:?}"),
-                })?;
+            let handle = OpenProcess(
+                PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION,
+                false,
+                pid,
+            )
+            .map_err(|e| BoosterError::ProcessOpen {
+                pid,
+                reason: format!("{e:?}"),
+            })?;
             
             // Check current priority before restoring
             let current = GetPriorityClass(handle);
@@ -354,7 +355,7 @@ impl SystemBooster {
         #[cfg(not(target_os = "windows"))]
         {
             let _ = pid;
-            Err(BoosterError::PlatformUnsupported("Windows-only feature".into()).into())
+            anyhow::bail!("Windows-only feature")
         }
     }
     
@@ -378,7 +379,7 @@ impl SystemBooster {
         }
         
         #[cfg(not(target_os = "windows"))]
-        Err(BoosterError::PlatformUnsupported("Windows-only feature".into()).into())
+        anyhow::bail!("Windows-only feature")
     }
 }
 
