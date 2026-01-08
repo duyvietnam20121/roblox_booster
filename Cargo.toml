@@ -3,10 +3,10 @@ name = "roblox_booster"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.70"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Made by AI"]
 description = "A system performance booster for Roblox"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/roblox_booster"
+license = "MIT"
+repository = "https://github.com/duyvietnam20121/roblox_booster"
 keywords = ["roblox", "performance", "booster", "gaming", "optimizer"]
 categories = ["games", "gui"]
 

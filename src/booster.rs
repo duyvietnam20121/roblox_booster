@@ -19,16 +19,10 @@ use windows::Win32::{
 pub enum BoosterError {
     #[error("Failed to open process {pid}: {reason}")]
     ProcessOpen { pid: u32, reason: String },
-    
+
     #[error("Failed to set process priority for PID {pid}: {reason}")]
     PrioritySet { pid: u32, reason: String },
-    
-    #[error("Failed to optimize memory for PID {pid}: {reason}")]
-    MemoryOptimize { pid: u32, reason: String },
-    
-    #[error("Platform not supported: {0}")]
-    PlatformUnsupported(String),
-    
+
     #[error("No Roblox processes found")]
     NoProcessesFound,
 }
@@ -302,10 +296,8 @@ impl SystemBooster {
             ];
             
             for path in &possible_paths {
-                if std::path::Path::new(path).exists() {
-                    if Command::new(path).spawn().is_ok() {
-                        return Ok(());
-                    }
+                if std::path::Path::new(path).exists() && Command::new(path).spawn().is_ok() {
+                    return Ok(());
                 }
             }
             
