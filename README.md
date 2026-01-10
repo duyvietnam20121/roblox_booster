@@ -54,8 +54,8 @@ just clean      # Clean artifacts
 
 ## 🎯 Modern Rust Features Used
 
-- **Rust 1.75** - Modern stable Rust
-- **Edition 2021** - Latest Rust edition
+- **Rust 1.85** - Latest stable with Edition 2024
+- **Edition 2024** - Newest Rust edition features
 - **eframe 0.29 / egui 0.29** - Latest GUI framework
 - **sysinfo 0.32** - Modern system information API
 - **anyhow & thiserror** - Modern error handling
@@ -63,7 +63,7 @@ just clean      # Clean artifacts
 - **must_use** - Compiler warnings for unused returns
 - **rust-toolchain.toml** - Automatic toolchain management
 - **.cargo/config.toml** - Project-specific cargo configuration
-- **just** - Modern alternative to Make
+- **just** - Modern task runner
 
 ## 📦 Project Structure
 

@@ -9,9 +9,9 @@ use crate::config::Config;
 use windows::Win32::{
     Foundation::CloseHandle,
     System::Threading::{
-        GetPriorityClass, OpenProcess, SetPriorityClass, SetProcessWorkingSetSize,
-        ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
-        PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION, PROCESS_SET_QUOTA,
+        ABOVE_NORMAL_PRIORITY_CLASS, GetPriorityClass, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION, PROCESS_SET_QUOTA,
+        SetPriorityClass, SetProcessWorkingSetSize,
     },
 };
 
