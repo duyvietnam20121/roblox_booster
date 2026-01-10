@@ -77,7 +77,8 @@ impl SystemBooster {
     /// Check for new Roblox processes and auto-boost them
     pub fn auto_detect_and_boost(&mut self) -> Option<String> {
         self.config.auto_detect_roblox.then(|| {
-            self.system.refresh_processes(ProcessesToUpdate::All);
+            // FIX: Add second parameter (true) to refresh processes list
+            self.system.refresh_processes(ProcessesToUpdate::All, true);
             let mut new_processes = Vec::new();
 
             for (pid, process) in self.system.processes() {
@@ -85,7 +86,7 @@ impl SystemBooster {
                 let pid_u32 = pid.as_u32();
 
                 if Self::is_roblox_process(&name) && !self.roblox_pids.contains(&pid_u32) {
-                    if self.optimize_process(pid_u32, &name).is_ok() {
+                    if self.optimize_process(pid_u32).is_ok() {
                         self.roblox_pids.insert(pid_u32);
                         new_processes.push(name.into_owned());
                     }
@@ -125,7 +126,7 @@ impl SystemBooster {
             if Self::is_roblox_process(&name) {
                 let pid_u32 = pid.as_u32();
 
-                match self.optimize_process(pid_u32, &name) {
+                match self.optimize_process(pid_u32) {
                     Ok(()) => {
                         self.roblox_pids.insert(pid_u32);
                         stats.processes_boosted += 1;
@@ -174,7 +175,8 @@ impl SystemBooster {
     }
 
     /// Optimize a single process
-    fn optimize_process(&self, pid: u32, name: &str) -> Result<()> {
+    /// FIX: Remove unused `name` parameter
+    fn optimize_process(&self, pid: u32) -> Result<()> {
         #[cfg(target_os = "windows")]
         unsafe {
             // Open process with all required permissions
@@ -214,7 +216,7 @@ impl SystemBooster {
 
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = (pid, name);
+            let _ = pid;
             anyhow::bail!("Windows-only feature")
         }
     }
@@ -247,7 +249,8 @@ impl SystemBooster {
 
     /// Get current Roblox process count
     pub fn get_roblox_process_count(&mut self) -> usize {
-        self.system.refresh_processes(ProcessesToUpdate::All);
+        // FIX: Add second parameter (true) to refresh processes list
+        self.system.refresh_processes(ProcessesToUpdate::All, true);
         self.system
             .processes()
             .iter()
