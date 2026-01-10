@@ -35,29 +35,25 @@ impl Config {
                 .unwrap_or_else(|_| PathBuf::from("."))
         } else {
             std::env::var("HOME")
-                .map(|h| {
-                    let mut p = PathBuf::from(h);
-                    p.push(".config");
-                    p
-                })
+                .map(|h| PathBuf::from(h).join(".config"))
                 .unwrap_or_else(|_| PathBuf::from("."))
         };
-        
+
         path.push("roblox_booster");
         path.push("config.json");
         path
     }
-    
+
     /// Load configuration from file
     #[must_use]
     pub fn load() -> Self {
         let path = Self::get_config_path();
-        
+
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
-        
+
         fs::read_to_string(&path)
             .ok()
             .and_then(|contents| serde_json::from_str(&contents).ok())
@@ -67,19 +63,19 @@ impl Config {
                 config
             })
     }
-    
+
     /// Save configuration to file
     pub fn save(&self) -> Result<()> {
         let path = Self::get_config_path();
-        
+
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).context("Failed to create config directory")?;
         }
-        
+
         let json = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
-        
+
         fs::write(&path, json).context("Failed to write config file")?;
-        
+
         Ok(())
     }
 }

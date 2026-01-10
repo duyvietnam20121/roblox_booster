@@ -54,9 +54,12 @@ just clean      # Clean artifacts
 
 ## 🎯 Modern Rust Features Used
 
+- **Rust 1.75** - Modern stable Rust
 - **Edition 2021** - Latest Rust edition
+- **eframe 0.29 / egui 0.29** - Latest GUI framework
+- **sysinfo 0.32** - Modern system information API
 - **anyhow & thiserror** - Modern error handling
-- **const generics** - Type-safe constants
+- **Option::then** - Cleaner conditional returns
 - **must_use** - Compiler warnings for unused returns
 - **rust-toolchain.toml** - Automatic toolchain management
 - **.cargo/config.toml** - Project-specific cargo configuration
@@ -168,7 +171,7 @@ See `SECURITY.md` and `report_false_positive.md` for details.
 
 - **OS**: Windows 10/11
 - **RAM**: 4GB minimum
-- **Rust**: 1.70+ (specified in rust-toolchain.toml)
+- **Rust**: 1.75+ (specified in rust-toolchain.toml)
 
 ## 🐛 Troubleshooting
 

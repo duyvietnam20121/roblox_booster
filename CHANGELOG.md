@@ -2,7 +2,14 @@
 
 All notable changes to Roblox Booster will be documented in this file.
 
-## [0.1.0] - 2026-01-05
+## [0.1.0] - 2026-01-10
+
+### 🎉 Major Updates
+- **Rust 1.75**: Upgraded to modern stable Rust
+- **Dependencies**: Updated all crates to latest versions
+  - eframe 0.28 → 0.29
+  - egui 0.28 → 0.29  
+  - sysinfo 0.31 → 0.32
 
 ### ✨ Added
 - **Smart Process Detection**: Enhanced pattern matching for Roblox processes
