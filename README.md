@@ -1,103 +1,18 @@
-# 🚀 Roblox Booster - Safe Edition
+# 🚀 Roblox Booster
 
-**Ultra-safe, minimal CPU priority optimizer for Roblox** built with Rust 1.85 + Edition 2024.
-
-[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
-[![Edition](https://img.shields.io/badge/edition-2024-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/)
-[![Safety](https://img.shields.io/badge/safety-maximum-brightgreen.svg)](#-safety-guarantees)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
-> **🛡️ Maximum Safety**: Path-validated, priority-only optimization. No memory modification, no code injection, no deep system access.
-
----
-
-## 🛡️ Safety Guarantees
-
-### What Makes This Ultra-Safe?
-
-#### ✅ Path Validation (NEW)
-```rust
-// ONLY processes in these directories:
-C:\Users\[User]\AppData\Local\Roblox\Versions\
-C:\Program Files (x86)\Roblox\Versions\
-```
-- **Whitelist approach**: Only boost processes in verified Roblox directories
-- **No system-wide access**: Won't touch other processes
-- **Executable verification**: Checks actual .exe path before optimization
-
-#### ✅ Minimal API Usage
-```rust
-// ONLY these Windows APIs:
-OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION)
-SetPriorityClass(handle, priority)
-GetPriorityClass(handle)
-CloseHandle(handle)
-```
-- **NO** `PROCESS_SET_QUOTA` permission
-- **NO** `SetProcessWorkingSetSize` (removed)
-- **NO** memory manipulation
-- **NO** code injection
-
-#### ✅ Multi-Layer Safety Checks
-```
-1. Process name validation
-2. Exclusion list (installers, updaters, crash handlers)
-3. Process lifetime check (> 3 seconds)
-4. Path whitelist validation (CRITICAL)
-5. Process count limit (max 5)
-6. Priority verification after change
-```
-
-#### ✅ Conservative Defaults
-- Priority level: **Above Normal** (not High)
-- Max processes: **5** (reduced from 10)
-- Auto-detect delay: **2 seconds**
-- Minimum uptime: **3 seconds**
-
----
+A modern system performance optimizer for Roblox, built with Rust and egui.
 
 ## ✨ Features
 
-### Core Functionality
-- **🎯 CPU Priority Boost**: Three safe levels
-  - Normal (baseline)
-  - Above Normal (recommended default)
-  - High (maximum, use carefully)
+- **Auto Booster**: Toggle system optimizations on/off
+- **Auto-detect**: Automatically detects and boosts Roblox processes
+- **Launch Roblox**: Start Roblox directly from the app
+- **Configurable Settings**: Persistent configuration with JSON
+- **Priority Control**: Adjust process priority (Normal, Above Normal, High)
+- **Memory Optimization**: Clear system cache for better performance
+- **Live Monitoring**: Real-time Roblox process count
 
-- **🔍 Smart Auto-Detect**: Finds Roblox automatically
-  - Path-validated processes only
-  - Multi-layer filtering
-  - Process lifetime verification
-
-- **🚀 Safe Launch**: Protocol handler only
-  - Uses `roblox://` protocol
-  - No direct .exe access
-  - Zero file system modifications
-
-### Safety Features
-- **🛡️ Path Whitelist**: Only Roblox directories
-- **📊 Process Limit**: Maximum 5 processes
-- **⏱️ Lifetime Check**: Minimum 3 seconds uptime
-- **✅ Priority Verification**: Confirms changes applied
-- **🧹 Auto-Restore**: Returns to normal on exit
-
----
-
-## 🚀 Quick Start
-
-### Build & Run
-
-```bash
-# Clone repository
-git clone https://github.com/duyvietnam20121/roblox_booster
-cd roblox_booster
-
-# Build release
-cargo build --release
-
-# Executable location:
-# target/x86_64-pc-windows-gnu/release/roblox_booster.exe
-```
+## 🛠️ Build Instructions
 
 ### Prerequisites
 
@@ -105,327 +20,217 @@ cargo build --release
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# Linux: Install MinGW for cross-compilation
-sudo apt install mingw-w64
+# Linux/Mac: Install MinGW for cross-compilation
+sudo apt update && sudo apt install -y mingw-w64
+
+# Add Windows target
 rustup target add x86_64-pc-windows-gnu
 ```
 
----
+### Quick Build
 
-## 🔧 How It Works
+```bash
+# Simple build (uses .cargo/config.toml automatically)
+cargo build --release
 
-### Safety Pipeline
-
-```
-Process Detected
-    ↓
-Name Check → "roblox" or "rbx"?
-    ↓
-Exclusion Check → Not installer/updater?
-    ↓
-Lifetime Check → Running > 3 seconds?
-    ↓
-Path Check → In whitelist directories? [CRITICAL]
-    ↓
-Count Check → < 5 total processes?
-    ↓
-Priority Check → Not already high?
-    ↓
-✅ SAFE TO BOOST
-    ↓
-Set Priority ONLY (no memory access)
-    ↓
-Verify Priority Changed
-    ↓
-✅ DONE
+# Or with just (recommended)
+cargo install just
+just build
 ```
 
-### Path Whitelist
+### Using Just (Modern Task Runner)
 
-**ONLY processes from these directories are optimized:**
-
-1. `C:\Users\[CurrentUser]\AppData\Local\Roblox\Versions\`
-2. `C:\Program Files (x86)\Roblox\Versions\`
-
-**All other processes are ignored**, even if named "roblox".
-
-### What Gets Changed
-
-**ONLY CPU Priority:**
-```
-Windows Scheduler Priority Levels:
-  Normal (8)       → Above Normal (10)  [Default]
-  Normal (8)       → High (13)          [Optional]
+```bash
+just setup      # Install dev dependencies
+just build      # Build release
+just run        # Build and run
+just test       # Run tests
+just lint       # Run clippy
+just fmt        # Format code
+just ci         # Full CI check
+just dist       # Build and show info
+just clean      # Clean artifacts
 ```
 
-**Absolutely Nothing Else:**
-- ❌ No memory modification
-- ❌ No working set changes
-- ❌ No system-wide settings
-- ❌ No file access
-- ❌ No registry changes
-- ❌ No network calls
+## 🎯 Modern Rust Features Used
 
----
+- **Rust 1.85** - Latest stable with Edition 2024
+- **Edition 2024** - Newest Rust edition features
+- **eframe 0.29 / egui 0.29** - Latest GUI framework
+- **sysinfo 0.32** - Modern system information API
+- **anyhow & thiserror** - Modern error handling
+- **Option::then** - Cleaner conditional returns
+- **must_use** - Compiler warnings for unused returns
+- **rust-toolchain.toml** - Automatic toolchain management
+- **.cargo/config.toml** - Project-specific cargo configuration
+- **just** - Modern task runner
 
-## 📊 Performance
+## 📦 Project Structure
 
-### Expected Gains
-
-| Metric | Before | After (Above Normal) | Improvement |
-|--------|--------|---------------------|-------------|
-| **Avg FPS** | 144 | 150-154 | +4-7% |
-| **1% Low FPS** | 110 | 125-132 | +14-20% |
-| **Frame Time** | 6.9ms | 6.7ms | -3% |
-| **Stutters/min** | 12 | 7-9 | -25-42% |
-
-> **Note**: Conservative estimates. Actual results vary by system. Priority boost helps CPU-bound scenarios, not GPU-bound.
-
-### When This Helps Most
-
-✅ **Best for**:
-- CPU-bound scenarios (many players/objects)
-- Background task interference
-- Slower CPUs (< 8 cores)
-- Frame time consistency
-
-❌ **Won't help much**:
-- GPU-bound scenarios (high graphics)
-- Already hitting FPS cap
-- Fast modern CPUs (> 12 cores)
-
----
+```
+roblox_booster/
+├── .cargo/
+│   └── config.toml          # Cargo configuration
+├── src/
+│   ├── main.rs              # Entry point
+│   ├── booster.rs           # Core logic (anyhow error handling)
+│   ├── config.rs            # Configuration management
+│   └── ui.rs                # Modern egui UI
+├── build.rs                 # Windows metadata
+├── Cargo.toml               # Dependencies
+├── rust-toolchain.toml      # Rust version pinning
+├── justfile                 # Modern task runner
+└── README.md
+```
 
 ## ⚙️ Configuration
 
-### Config Location
-
+Config file location:
 - Windows: `%APPDATA%\roblox_booster\config.json`
+- Linux/Mac: `~/.config/roblox_booster/config.json`
 
-### Example Config
-
+Example:
 ```json
 {
   "auto_start_booster": false,
   "auto_detect_roblox": true,
-  "priority_level": 1,
+  "priority_level": 2,
   "clear_memory_cache": true
 }
 ```
 
-### Options
+## 🔧 How It Works
 
-| Option | Default | Values | Description |
-|--------|---------|--------|-------------|
-| `auto_start_booster` | `false` | true/false | Auto-enable on launch |
-| `auto_detect_roblox` | `true` | true/false | Auto-boost new processes |
-| `priority_level` | `1` | 0, 1, 2 | 0=Normal, 1=Above, 2=High |
-| `clear_memory_cache` | `true` | true/false | Enable optimization (no-op) |
+### Advanced Optimization Pipeline
 
-### Recommended Settings
+**Phase 1: Process Detection**
+- Smart pattern matching (detects "roblox", "rbx" variants)
+- Filters out installers and uninstallers
+- Real-time process monitoring
 
-**Conservative (Safest):**
-```json
-{
-  "priority_level": 1,
-  "auto_detect_roblox": true
-}
-```
+**Phase 2: Process Optimization**
+- **CPU Priority Boost**: Sets HIGH/ABOVE_NORMAL priority class
+- **Working Set Trimming**: Optimizes memory allocation
+- **Multi-stage verification**: Checks priority before/after
 
-**Performance (Careful):**
-```json
-{
-  "priority_level": 2,
-  "auto_detect_roblox": true
-}
-```
+**Phase 3: System Optimization**
+- Memory cache clearing
+- System-wide performance tuning
+- Cleanup on exit
 
----
+### Technical Details
+- Uses Windows API: `SetPriorityClass`, `SetProcessWorkingSetSize`
+- Safe handle management with RAII
+- Typed errors with `thiserror`
+- Graceful degradation on failure
 
-## 🔒 Security
+## ✨ New Features
 
-### Antivirus False Positives
+- **📊 Optimization Stats**: Real-time metrics display
+- **🎯 Smart Detection**: Better process filtering
+- **💾 Working Set Optimization**: Memory trimming per process
+- **⚡ Two-Phase Optimization**: Priority + Memory optimization
+- **🛡️ Error Recovery**: Graceful handling of failures
+- **📈 Performance Tracking**: Shows optimized process count
 
-⚠️ Some AV may flag this due to process API usage.
+## 🔧 How It Works
 
-**This is safe:**
-- ✅ Open source (full code available)
-- ✅ Memory-safe Rust
-- ✅ Minimal permissions
-- ✅ Path-validated
+## 🛡️ Security Warning
+
+**Antivirus False Positives**
+
+Some AVs may flag this due to Windows API usage (OpenProcess, SetPriorityClass).
+
+**This is safe because:**
+- ✅ Full source code available
+- ✅ Modern Rust (memory-safe)
 - ✅ No code injection
-- ✅ MIT licensed
+- ✅ Open source auditable
 
-### Windows SmartScreen
+**Detections:**
+- W64.AIDetectMalware (heuristic)
+- ElasticMalicious (moderate confidence)
 
-If blocked:
+**Why?** Uses process management APIs + cross-compiled from Linux + no code signing.
+
+**To bypass Windows SmartScreen:**
 1. Click "More info"
 2. Click "Run anyway"
 
-### Why Trust This?
+See `SECURITY.md` and `report_false_positive.md` for details.
 
-| Aspect | Status |
-|--------|--------|
-| **Source code** | ✅ Fully public |
-| **Memory safety** | ✅ Rust guarantees |
-| **Permissions** | ✅ Minimal (2 flags only) |
-| **Path validation** | ✅ Whitelist only |
-| **Code injection** | ❌ None |
-| **Memory access** | ❌ None |
-| **File modification** | ❌ None (config only) |
-| **Network access** | ❌ None |
+## 🛡️ Safety
 
----
+- ✅ No game modification
+- ✅ No memory injection
+- ✅ No ToS violations
+- ✅ System-level only
+- ✅ Memory-safe Rust
+
+## 📋 Requirements
+
+- **OS**: Windows 10/11
+- **RAM**: 4GB minimum
+- **Rust**: 1.75+ (specified in rust-toolchain.toml)
 
 ## 🐛 Troubleshooting
 
-### No Performance Gain
+**Build errors?**
+```bash
+# Setup everything automatically
+just setup
 
-**Check:**
-1. Task Manager → Roblox priority shows "High" or "Above Normal"
-2. GPU usage < 95% (must be CPU-bound to benefit)
-3. Try different priority levels
+# Or manual
+rustup target add x86_64-pc-windows-gnu
+```
 
-### "No Roblox processes found"
+**Can't find exe?**
+```bash
+# Check build location
+just info
 
-**Solutions:**
-1. Make sure Roblox is running
-2. Check Roblox is installed in standard location:
-   - `C:\Users\[You]\AppData\Local\Roblox\Versions\`
-3. Restart application
-4. Check process lifetime (must be running > 3 seconds)
+# Or find it manually
+find target -name "roblox_booster.exe"
+```
 
-### "Path validation failed"
-
-**This means:**
-- Roblox executable is not in whitelist directories
-- **This is a safety feature** - working as intended
-- Install Roblox in standard location
-
-### Settings Not Saving
+## 🚀 Development
 
 ```bash
-# Windows: Check directory exists
-dir "%APPDATA%\roblox_booster\"
+# Format code
+just fmt
 
-# Reset to defaults: delete config
-del "%APPDATA%\roblox_booster\config.json"
+# Run linter
+just lint
+
+# Run tests
+just test
+
+# Full CI check
+just ci
+
+# Watch mode (requires cargo-watch)
+cargo install cargo-watch
+just watch
 ```
+
+## 📝 License
+
+MIT OR Apache-2.0
+
+## 🤝 Contributing
+
+Read `CONTRIBUTING.md` and `DEVELOPER_NOTES.md` before making changes!
+
+1. Fork the repo
+2. Create feature branch
+3. Make changes
+4. Run `just ci`
+5. Submit PR
+
+**Important:** Read `DEVELOPER_NOTES.md` for critical development guidelines!
 
 ---
 
-## 📚 Technical Details
+Built with ❤️ using modern Rust, egui, and best practices
 
-### APIs Used
-
-```rust
-// COMPLETE list of Windows APIs:
-OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION, false, pid)
-SetPriorityClass(handle, priority)
-GetPriorityClass(handle)
-CloseHandle(handle)
-```
-
-**That's it. Nothing else.**
-
-### Safety Constants
-
-```rust
-const MAX_PROCESSES_TO_BOOST: usize = 5;
-const MIN_PROCESS_LIFETIME_MS: u64 = 3000;
-
-const SAFE_ROBLOX_PATHS: &[&str] = &[
-    r"C:\Users\*\AppData\Local\Roblox\Versions\",
-    r"C:\Program Files (x86)\Roblox\Versions\",
-];
-```
-
-### Path Validation Logic
-
-```rust
-fn is_safe_path(&self, pid: u32) -> bool {
-    if let Some(process) = self.system.process(Pid::from_u32(pid)) {
-        if let Some(exe_path) = process.exe() {
-            return self.allowed_paths.iter().any(|allowed| {
-                exe_path.starts_with(allowed)
-            });
-        }
-    }
-    false
-}
-```
-
-### Error Types
-
-```rust
-pub enum BoosterError {
-    ProcessOpen { pid, reason },
-    PrioritySet { pid, reason },
-    NoProcessesFound,
-    SafetyCheckFailed(String),
-    PathValidationFailed(String),  // NEW
-}
-```
-
----
-
-## 📝 Changelog
-
-### [0.2.0] - Safe Edition - 2026-01-11
-
-#### 🛡️ **Major Safety Improvements**
-
-**Path Validation:**
-- ✅ Added whitelist-based path validation
-- ✅ Only boost processes in verified Roblox directories
-- ✅ Rejects processes outside whitelist (even if named "roblox")
-
-**API Reductions:**
-- ✅ Removed `PROCESS_SET_QUOTA` permission
-- ✅ Removed `SetProcessWorkingSetSize` calls
-- ✅ NO memory modification whatsoever
-
-**Safety Enhancements:**
-- ✅ Reduced max processes: 10 → 5
-- ✅ Added process lifetime minimum: 3 seconds
-- ✅ Changed default priority: High → Above Normal
-- ✅ Added executable path verification
-- ✅ Added priority change verification
-
-**Code Quality:**
-- ✅ Upgraded to Rust 1.85 + Edition 2024
-- ✅ Added comprehensive unit tests
-- ✅ Improved error messages with context
-- ✅ Better UI with modern styling
-
----
-
-## 📄 License
-
-**MIT License** - Copyright © 2026
-
-See [LICENSE](LICENSE) for full terms.
-
----
-
-## 🙏 Acknowledgments
-
-Built with:
-- [Rust 1.85](https://www.rust-lang.org/) - Memory-safe systems language
-- [egui 0.29](https://github.com/emilk/egui) - Immediate mode GUI
-- [sysinfo 0.32](https://github.com/GuillaumeGomez/sysinfo) - System information
-- [windows-rs 0.58](https://github.com/microsoft/windows-rs) - Windows API
-
----
-
-<div align="center">
-
-**Built with ❤️ using Rust 1.85 + Edition 2024**
-
-**🛡️ Maximum Safety · ⚡ Minimal Impact · 🔍 Path-Validated**
-
-⭐ Star if this helps you!
-
-[Report Bug](https://github.com/duyvietnam20121/roblox_booster/issues) • [Request Feature](https://github.com/duyvietnam20121/roblox_booster/issues)
-
-</div>
+**For Developers:** See `DEVELOPER_NOTES.md` for detailed guidance
