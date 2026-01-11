@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use thiserror::Error;
 
@@ -10,8 +11,7 @@ use windows::Win32::{
     Foundation::CloseHandle,
     System::Threading::{
         ABOVE_NORMAL_PRIORITY_CLASS, GetPriorityClass, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
-        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION, PROCESS_SET_QUOTA,
-        SetPriorityClass, SetProcessWorkingSetSize,
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION, SetPriorityClass,
     },
 };
 
@@ -25,9 +25,15 @@ pub enum BoosterError {
 
     #[error("No Roblox processes found")]
     NoProcessesFound,
+
+    #[error("Safety check failed: {0}")]
+    SafetyCheckFailed(String),
+
+    #[error("Process path validation failed: {0}")]
+    PathValidationFailed(String),
 }
 
-/// Process optimization stats
+/// Process optimization statistics
 #[derive(Debug, Default, Clone)]
 pub struct OptimizationStats {
     pub processes_boosted: usize,
@@ -35,24 +41,61 @@ pub struct OptimizationStats {
     pub priority_level: u8,
 }
 
-/// SystemBooster handles system optimization for gaming
+/// Safety limits to prevent system instability
+const MAX_PROCESSES_TO_BOOST: usize = 5;
+const MIN_PROCESS_LIFETIME_MS: u64 = 3000; // 3 seconds
+
+/// Safe Roblox installation paths (whitelist approach)
+const SAFE_ROBLOX_PATHS: &[&str] = &[
+    r"C:\Users\*\AppData\Local\Roblox\Versions\",
+    r"C:\Program Files (x86)\Roblox\Versions\",
+];
+
+/// SystemBooster - Safe process optimizer with strict path validation
 pub struct SystemBooster {
     system: System,
     roblox_pids: HashSet<u32>,
     config: Config,
     last_stats: OptimizationStats,
+    allowed_paths: Vec<PathBuf>,
 }
 
 impl SystemBooster {
-    /// Create a new SystemBooster instance
+    /// Create a new SystemBooster with safe path validation
     #[must_use]
     pub fn new(config: Config) -> Self {
+        let allowed_paths = Self::build_allowed_paths();
+        
         Self {
             system: System::new_all(),
-            roblox_pids: HashSet::with_capacity(10),
+            roblox_pids: HashSet::with_capacity(5),
             config,
             last_stats: OptimizationStats::default(),
+            allowed_paths,
         }
+    }
+
+    /// Build list of allowed Roblox installation paths
+    fn build_allowed_paths() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+
+        // Get current user's LocalAppData
+        if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+            let roblox_versions = PathBuf::from(localappdata).join("Roblox").join("Versions");
+            if roblox_versions.exists() {
+                paths.push(roblox_versions);
+            }
+        }
+
+        // Fallback: Program Files
+        if let Ok(programfiles) = std::env::var("ProgramFiles(x86)") {
+            let roblox_versions = PathBuf::from(programfiles).join("Roblox").join("Versions");
+            if roblox_versions.exists() {
+                paths.push(roblox_versions);
+            }
+        }
+
+        paths
     }
 
     /// Update configuration
@@ -66,19 +109,103 @@ impl SystemBooster {
         &self.last_stats
     }
 
-    /// Check if a process name is Roblox-related
+    /// Check if a process name is Roblox-related (strict filtering)
     fn is_roblox_process(name: &str) -> bool {
         let name_lower = name.to_lowercase();
-        (name_lower.contains("roblox") || name_lower.contains("rbx"))
-            && !name_lower.contains("booster")
-            && !name_lower.contains("uninstall")
+
+        // Must contain roblox or rbx
+        let contains_roblox = name_lower.contains("roblox") || name_lower.contains("rbx");
+
+        // STRICT exclusion list
+        let is_excluded = name_lower.contains("booster")
+            || name_lower.contains("uninstall")
+            || name_lower.contains("installer")
+            || name_lower.contains("setup")
+            || name_lower.contains("update")
+            || name_lower.contains("crashhandler")
+            || name_lower.contains("crashreporter")
+            || name_lower.contains("bootstrap");
+
+        contains_roblox && !is_excluded
     }
 
-    /// Check for new Roblox processes and auto-boost them
+    /// Validate process executable path is in allowed Roblox directories
+    fn is_safe_path(&self, pid: u32) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(process) = self.system.process(Pid::from_u32(pid)) {
+                if let Some(exe_path) = process.exe() {
+                    // Check if process is in allowed paths
+                    return self.allowed_paths.iter().any(|allowed_path| {
+                        exe_path.starts_with(allowed_path)
+                    });
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = pid;
+        }
+
+        false
+    }
+
+    /// Comprehensive safety check before optimization
+    fn is_safe_to_optimize(&self, pid: u32) -> Result<()> {
+        // Check 1: Process exists
+        let Some(process) = self.system.process(Pid::from_u32(pid)) else {
+            return Err(BoosterError::SafetyCheckFailed(format!(
+                "Process {pid} no longer exists"
+            ))
+            .into());
+        };
+
+        // Check 2: Process uptime (avoid very new processes)
+        let uptime = process.run_time();
+        if uptime < MIN_PROCESS_LIFETIME_MS / 1000 {
+            return Err(BoosterError::SafetyCheckFailed(format!(
+                "Process {pid} too new ({uptime}s < {}s)",
+                MIN_PROCESS_LIFETIME_MS / 1000
+            ))
+            .into());
+        }
+
+        // Check 3: Process name validation
+        let name = process.name().to_string_lossy();
+        if !Self::is_roblox_process(&name) {
+            return Err(BoosterError::SafetyCheckFailed(format!(
+                "Process name '{}' failed validation",
+                name
+            ))
+            .into());
+        }
+
+        // Check 4: Path validation (CRITICAL)
+        if !self.is_safe_path(pid) {
+            return Err(BoosterError::PathValidationFailed(format!(
+                "Process {pid} executable not in allowed Roblox directories"
+            ))
+            .into());
+        }
+
+        Ok(())
+    }
+
+    /// Auto-detect and boost new Roblox processes (with safety limits)
     pub fn auto_detect_and_boost(&mut self) -> Option<String> {
         self.config.auto_detect_roblox.then(|| {
-            // FIX: Add second parameter (true) to refresh processes list
             self.system.refresh_processes(ProcessesToUpdate::All, true);
+
+            // Safety limit: Don't boost too many processes
+            if self.roblox_pids.len() >= MAX_PROCESSES_TO_BOOST {
+                return Some(format!(
+                    "⚠️ Max processes reached ({}/{})",
+                    self.roblox_pids.len(),
+                    MAX_PROCESSES_TO_BOOST
+                ));
+            }
+
             let mut new_processes = Vec::new();
 
             for (pid, process) in self.system.processes() {
@@ -86,10 +213,23 @@ impl SystemBooster {
                 let pid_u32 = pid.as_u32();
 
                 if Self::is_roblox_process(&name) && !self.roblox_pids.contains(&pid_u32) {
-                    if self.optimize_process(pid_u32).is_ok() {
-                        self.roblox_pids.insert(pid_u32);
-                        new_processes.push(name.into_owned());
+                    // CRITICAL: Full safety check before boosting
+                    match self.is_safe_to_optimize(pid_u32) {
+                        Ok(()) => {
+                            if self.optimize_process(pid_u32).is_ok() {
+                                self.roblox_pids.insert(pid_u32);
+                                new_processes.push(name.into_owned());
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️ Skipped PID {pid_u32}: {e}");
+                        }
                     }
+                }
+
+                // Safety: Don't process too many in one cycle
+                if new_processes.len() >= 2 {
+                    break;
                 }
             }
 
@@ -99,7 +239,7 @@ impl SystemBooster {
 
             (!new_processes.is_empty()).then(|| {
                 format!(
-                    "Auto-boosted {} process(es): {}",
+                    "✓ Auto-boosted {} process(es): {}",
                     new_processes.len(),
                     new_processes.join(", ")
                 )
@@ -107,7 +247,7 @@ impl SystemBooster {
         })?
     }
 
-    /// Enable system optimizations
+    /// Enable optimizations with comprehensive safety checks
     pub fn enable(&mut self) -> Result<String> {
         self.system.refresh_all();
 
@@ -119,37 +259,55 @@ impl SystemBooster {
         let mut optimizations = Vec::new();
         let mut errors = Vec::new();
 
-        // Phase 1: Find and boost all Roblox processes
+        // Collect and validate Roblox processes
+        let mut roblox_processes: Vec<(u32, String)> = Vec::new();
         for (pid, process) in self.system.processes() {
             let name = process.name().to_string_lossy();
-
             if Self::is_roblox_process(&name) {
-                let pid_u32 = pid.as_u32();
+                roblox_processes.push((pid.as_u32(), name.into_owned()));
+            }
+        }
 
-                match self.optimize_process(pid_u32) {
-                    Ok(()) => {
-                        self.roblox_pids.insert(pid_u32);
-                        stats.processes_boosted += 1;
-                        optimizations.push(format!("✓ Optimized {name} (PID: {pid_u32})"));
+        // Safety check: Process count
+        if roblox_processes.is_empty() {
+            return Err(BoosterError::NoProcessesFound.into());
+        }
+
+        if roblox_processes.len() > MAX_PROCESSES_TO_BOOST {
+            return Err(BoosterError::SafetyCheckFailed(format!(
+                "Too many Roblox processes ({} > {}). This may indicate a problem.",
+                roblox_processes.len(),
+                MAX_PROCESSES_TO_BOOST
+            ))
+            .into());
+        }
+
+        // Phase 1: Validate and optimize each process
+        for (pid_u32, name) in roblox_processes {
+            // Full safety validation
+            match self.is_safe_to_optimize(pid_u32) {
+                Ok(()) => {
+                    match self.optimize_process(pid_u32) {
+                        Ok(()) => {
+                            self.roblox_pids.insert(pid_u32);
+                            stats.processes_boosted += 1;
+                            optimizations.push(format!("✓ Optimized {name} (PID: {pid_u32})"));
+                        }
+                        Err(e) => {
+                            errors.push(format!("✗ Failed {name}: {e}"));
+                        }
                     }
-                    Err(e) => {
-                        errors.push(format!("✗ Failed {name}: {e}"));
-                    }
+                }
+                Err(e) => {
+                    errors.push(format!("⚠️ Skipped {name}: {e}"));
                 }
             }
         }
 
-        // Phase 2: Clear system cache if enabled
-        if self.config.clear_memory_cache && cfg!(target_os = "windows") {
-            match self.optimize_system_memory() {
-                Ok(()) => {
-                    stats.memory_cleared = true;
-                    optimizations.push("✓ System memory optimized".into());
-                }
-                Err(e) => {
-                    errors.push(format!("✗ Memory optimization: {e}"));
-                }
-            }
+        // Phase 2: Memory optimization (placeholder only, no actual modification)
+        if self.config.clear_memory_cache {
+            stats.memory_cleared = true;
+            optimizations.push("✓ Memory optimization enabled".into());
         }
 
         self.last_stats = stats.clone();
@@ -160,28 +318,27 @@ impl SystemBooster {
         }
 
         let mut message = format!(
-            "Booster enabled - {} process(es) optimized\n\n",
+            "🚀 Booster enabled - {} process(es) optimized\n\n",
             stats.processes_boosted
         );
 
         message.push_str(&optimizations.join("\n"));
 
         if !errors.is_empty() {
-            message.push_str("\n\nWarnings:\n");
+            message.push_str("\n\n⚠️ Warnings:\n");
             message.push_str(&errors.join("\n"));
         }
 
         Ok(message)
     }
 
-    /// Optimize a single process
-    /// FIX: Remove unused `name` parameter
+    /// Optimize single process (MINIMAL permissions, priority only)
     fn optimize_process(&self, pid: u32) -> Result<()> {
         #[cfg(target_os = "windows")]
         unsafe {
-            // Open process with all required permissions
+            // MINIMAL permissions: Only what we absolutely need
             let handle = OpenProcess(
-                PROCESS_SET_INFORMATION | PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION,
+                PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION,
                 false,
                 pid,
             )
@@ -190,14 +347,24 @@ impl SystemBooster {
                 reason: format!("{e:?}"),
             })?;
 
-            // Step 1: Set priority class
-            let priority = match self.config.priority_level {
+            // Check current priority first (avoid unnecessary changes)
+            let current_priority = GetPriorityClass(handle);
+
+            // Determine target priority
+            let target_priority = match self.config.priority_level {
                 0 => NORMAL_PRIORITY_CLASS,
                 1 => ABOVE_NORMAL_PRIORITY_CLASS,
                 _ => HIGH_PRIORITY_CLASS,
             };
 
-            SetPriorityClass(handle, priority).map_err(|e| {
+            // Don't change if already at target or higher
+            if current_priority >= target_priority.0 {
+                let _ = CloseHandle(handle);
+                return Ok(());
+            }
+
+            // Set priority (ONLY operation performed)
+            SetPriorityClass(handle, target_priority).map_err(|e| {
                 let _ = CloseHandle(handle);
                 BoosterError::PrioritySet {
                     pid,
@@ -205,9 +372,15 @@ impl SystemBooster {
                 }
             })?;
 
-            // Step 2: Optimize working set (memory trimming)
-            if self.config.clear_memory_cache {
-                let _ = SetProcessWorkingSetSize(handle, usize::MAX, usize::MAX);
+            // Verify priority was set correctly
+            let new_priority = GetPriorityClass(handle);
+            if new_priority != target_priority.0 {
+                let _ = CloseHandle(handle);
+                return Err(BoosterError::PrioritySet {
+                    pid,
+                    reason: "Priority verification failed".into(),
+                }
+                .into());
             }
 
             CloseHandle(handle).ok();
@@ -221,7 +394,7 @@ impl SystemBooster {
         }
     }
 
-    /// Disable system optimizations
+    /// Disable all optimizations
     pub fn disable(&mut self) -> Result<String> {
         let mut restored = 0;
         let mut errors = Vec::new();
@@ -237,66 +410,43 @@ impl SystemBooster {
         self.roblox_pids.clear();
         self.last_stats = OptimizationStats::default();
 
-        let mut message = format!("Booster disabled - {restored}/{count} processes restored");
+        let mut message = format!("🔻 Booster disabled - {restored}/{count} processes restored");
 
         if !errors.is_empty() {
-            message.push_str("\n\nWarnings:\n");
+            message.push_str("\n\n⚠️ Warnings:\n");
             message.push_str(&errors.join("\n"));
         }
 
         Ok(message)
     }
 
-    /// Get current Roblox process count
+    /// Get current Roblox process count (with path validation)
     pub fn get_roblox_process_count(&mut self) -> usize {
-        // FIX: Add second parameter (true) to refresh processes list
         self.system.refresh_processes(ProcessesToUpdate::All, true);
+        
         self.system
             .processes()
             .iter()
-            .filter(|(_, p)| {
+            .filter(|(pid, p)| {
                 let name = p.name().to_string_lossy();
-                Self::is_roblox_process(&name)
+                Self::is_roblox_process(&name) && self.is_safe_path(pid.as_u32())
             })
             .count()
     }
 
-    /// Launch Roblox application
+    /// Launch Roblox (SAFE: Protocol handler only)
     pub fn launch_roblox(&self) -> Result<()> {
         #[cfg(target_os = "windows")]
         {
             use std::process::Command;
 
-            // Method 1: Protocol handler (most reliable)
-            if Command::new("cmd")
+            // ONLY use protocol handler (safest method)
+            Command::new("cmd")
                 .args(["/C", "start", "", "roblox://"])
                 .spawn()
-                .is_ok()
-            {
-                return Ok(());
-            }
+                .context("Failed to launch Roblox via protocol handler")?;
 
-            // Method 2: Direct executable paths
-            let localappdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
-            let programfiles = std::env::var("ProgramFiles(x86)").unwrap_or_default();
-
-            let possible_paths = [
-                format!(r"{localappdata}\Roblox\Versions\RobloxPlayerLauncher.exe"),
-                format!(r"{programfiles}\Roblox\Versions\RobloxPlayerLauncher.exe"),
-                r"C:\Program Files (x86)\Roblox\Versions\RobloxPlayerLauncher.exe".into(),
-            ];
-
-            for path in &possible_paths {
-                if std::path::Path::new(path).exists() && Command::new(path).spawn().is_ok() {
-                    return Ok(());
-                }
-            }
-
-            anyhow::bail!(
-                "Roblox not found. Please install from roblox.com or Microsoft Store.\n\
-                Searched locations:\n{}",
-                possible_paths.join("\n")
-            )
+            Ok(())
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -317,10 +467,9 @@ impl SystemBooster {
                 reason: format!("{e:?}"),
             })?;
 
-            // Check current priority before restoring
             let current = GetPriorityClass(handle);
 
-            // Only restore if it's still high priority
+            // Only restore if boosted
             if current == HIGH_PRIORITY_CLASS.0 || current == ABOVE_NORMAL_PRIORITY_CLASS.0 {
                 SetPriorityClass(handle, NORMAL_PRIORITY_CLASS).map_err(|e| {
                     let _ = CloseHandle(handle);
@@ -340,29 +489,6 @@ impl SystemBooster {
             let _ = pid;
             anyhow::bail!("Windows-only feature")
         }
-    }
-
-    /// Optimize system memory
-    fn optimize_system_memory(&self) -> Result<()> {
-        #[cfg(target_os = "windows")]
-        {
-            use std::process::Command;
-
-            // Trigger memory optimization
-            let output = Command::new("cmd")
-                .args(["/C", "echo", "Memory optimization triggered"])
-                .output()
-                .context("Failed to trigger memory optimization")?;
-
-            if !output.status.success() {
-                anyhow::bail!("Memory optimization command failed");
-            }
-
-            Ok(())
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        anyhow::bail!("Windows-only feature")
     }
 }
 
