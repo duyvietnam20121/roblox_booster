@@ -14,8 +14,7 @@ fn main() -> Result<(), eframe::Error> {
             .with_inner_size([420.0, 380.0])
             .with_resizable(false)
             .with_icon(create_app_icon())
-            .with_title("Roblox Booster")
-            .with_always_on_top(false),
+            .with_title("Roblox Booster"),
         ..Default::default()
     };
 

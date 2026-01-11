@@ -1,408 +1,499 @@
-use crate::{booster::SystemBooster, config::Config};
-use eframe::egui;
-use std::time::{Duration, Instant};
+use anyhow::{Context, Result};
+use std::collections::HashSet;
+use std::path::PathBuf;
+use sysinfo::{Pid, ProcessesToUpdate, System};
+use thiserror::Error;
 
-// UI Constants
-const AUTO_DETECT_INTERVAL: Duration = Duration::from_secs(2);
-const BUTTON_SIZE: egui::Vec2 = egui::vec2(240.0, 50.0);
-const SMALL_BUTTON_SIZE: egui::Vec2 = egui::vec2(240.0, 35.0);
+use crate::config::Config;
 
-/// Main application state
-pub struct RobloxBoosterApp {
-    booster: SystemBooster,
-    config: Config,
-    booster_enabled: bool,
-    status_message: String,
-    roblox_count: usize,
-    last_check: Instant,
-    show_settings: bool,
+#[cfg(target_os = "windows")]
+use windows::Win32::{
+    Foundation::CloseHandle,
+    System::Threading::{
+        ABOVE_NORMAL_PRIORITY_CLASS, GetPriorityClass, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION, SetPriorityClass,
+    },
+};
+
+#[derive(Debug, Error)]
+pub enum BoosterError {
+    #[error("Failed to open process {pid}: {reason}")]
+    ProcessOpen { pid: u32, reason: String },
+
+    #[error("Failed to set process priority for PID {pid}: {reason}")]
+    PrioritySet { pid: u32, reason: String },
+
+    #[error("No Roblox processes found")]
+    NoProcessesFound,
+
+    #[error("Safety check failed: {0}")]
+    SafetyCheckFailed(String),
+
+    #[error("Process path validation failed: {0}")]
+    PathValidationFailed(String),
 }
 
-impl RobloxBoosterApp {
-    /// Create new application instance
-    #[must_use]
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let config = Config::load();
-        let auto_start = config.auto_start_booster;
-        let mut booster = SystemBooster::new(config.clone());
+/// Process optimization statistics
+#[derive(Debug, Default, Clone)]
+pub struct OptimizationStats {
+    pub processes_boosted: usize,
+    pub memory_cleared: bool,
+    pub priority_level: u8,
+}
 
-        // Auto-start if configured
-        let (status_message, booster_enabled) = if auto_start {
-            match booster.enable() {
-                Ok(msg) => (msg, true),
-                Err(e) => (format!("❌ Auto-start failed: {e}"), false),
+/// Safety limits to prevent system instability
+const MAX_PROCESSES_TO_BOOST: usize = 5;
+const MIN_PROCESS_LIFETIME_MS: u64 = 3000; // 3 seconds
+
+/// Safe Roblox installation paths (whitelist approach)
+const SAFE_ROBLOX_PATHS: &[&str] = &[
+    r"C:\Users\*\AppData\Local\Roblox\Versions\",
+    r"C:\Program Files (x86)\Roblox\Versions\",
+];
+
+/// SystemBooster - Safe process optimizer with strict path validation
+pub struct SystemBooster {
+    system: System,
+    roblox_pids: HashSet<u32>,
+    config: Config,
+    last_stats: OptimizationStats,
+    allowed_paths: Vec<PathBuf>,
+}
+
+impl SystemBooster {
+    /// Create a new SystemBooster with safe path validation
+    #[must_use]
+    pub fn new(config: Config) -> Self {
+        let allowed_paths = Self::build_allowed_paths();
+        
+        Self {
+            system: System::new_all(),
+            roblox_pids: HashSet::with_capacity(5),
+            config,
+            last_stats: OptimizationStats::default(),
+            allowed_paths,
+        }
+    }
+
+    /// Build list of allowed Roblox installation paths
+    fn build_allowed_paths() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+
+        // Get current user's LocalAppData
+        if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+            let roblox_versions = PathBuf::from(localappdata).join("Roblox").join("Versions");
+            if roblox_versions.exists() {
+                paths.push(roblox_versions);
             }
-        } else {
-            (String::from("✓ Ready - Click to enable booster"), false)
+        }
+
+        // Fallback: Program Files
+        if let Ok(programfiles) = std::env::var("ProgramFiles(x86)") {
+            let roblox_versions = PathBuf::from(programfiles).join("Roblox").join("Versions");
+            if roblox_versions.exists() {
+                paths.push(roblox_versions);
+            }
+        }
+
+        paths
+    }
+
+    /// Update configuration
+    pub fn update_config(&mut self, config: Config) {
+        self.config = config;
+    }
+
+    /// Get last optimization stats
+    #[must_use]
+    pub const fn get_stats(&self) -> &OptimizationStats {
+        &self.last_stats
+    }
+
+    /// Check if a process name is Roblox-related (strict filtering)
+    fn is_roblox_process(name: &str) -> bool {
+        let name_lower = name.to_lowercase();
+
+        // Must contain roblox or rbx
+        let contains_roblox = name_lower.contains("roblox") || name_lower.contains("rbx");
+
+        // STRICT exclusion list
+        let is_excluded = name_lower.contains("booster")
+            || name_lower.contains("uninstall")
+            || name_lower.contains("installer")
+            || name_lower.contains("setup")
+            || name_lower.contains("update")
+            || name_lower.contains("crashhandler")
+            || name_lower.contains("crashreporter")
+            || name_lower.contains("bootstrap");
+
+        contains_roblox && !is_excluded
+    }
+
+    /// Validate process executable path is in allowed Roblox directories
+    fn is_safe_path(&self, pid: u32) -> bool {
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(process) = self.system.process(Pid::from_u32(pid)) {
+                if let Some(exe_path) = process.exe() {
+                    // Check if process is in allowed paths
+                    return self
+                        .allowed_paths
+                        .iter()
+                        .any(|allowed_path| exe_path.starts_with(allowed_path));
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = pid;
+        }
+
+        false
+    }
+
+    /// Comprehensive safety check before optimization
+    fn is_safe_to_optimize(&self, pid: u32) -> Result<()> {
+        // Check 1: Process exists
+        let Some(process) = self.system.process(Pid::from_u32(pid)) else {
+            return Err(
+                BoosterError::SafetyCheckFailed(format!("Process {pid} no longer exists")).into(),
+            );
         };
 
-        Self {
-            booster,
-            config,
-            booster_enabled,
-            status_message,
-            roblox_count: 0,
-            last_check: Instant::now(),
-            show_settings: false,
+        // Check 2: Process uptime (avoid very new processes)
+        let uptime = process.run_time();
+        if uptime < MIN_PROCESS_LIFETIME_MS / 1000 {
+            return Err(BoosterError::SafetyCheckFailed(format!(
+                "Process {pid} too new ({uptime}s < {}s)",
+                MIN_PROCESS_LIFETIME_MS / 1000
+            ))
+            .into());
         }
-    }
 
-    /// Toggle booster on/off
-    fn toggle_booster(&mut self) {
-        self.booster_enabled = !self.booster_enabled;
-
-        if self.booster_enabled {
-            match self.booster.enable() {
-                Ok(msg) => {
-                    self.status_message = msg;
-                    self.roblox_count = self.booster.get_roblox_process_count();
-                }
-                Err(e) => {
-                    self.status_message = format!("❌ Error: {e}");
-                    self.booster_enabled = false;
-                }
-            }
-        } else {
-            match self.booster.disable() {
-                Ok(msg) => {
-                    self.status_message = msg;
-                    self.roblox_count = 0;
-                }
-                Err(e) => {
-                    self.status_message = format!("⚠️ Warning: {e}");
-                }
-            }
+        // Check 3: Process name validation
+        let name = process.name().to_string_lossy();
+        if !Self::is_roblox_process(&name) {
+            return Err(BoosterError::SafetyCheckFailed(format!(
+                "Process name '{}' failed validation",
+                name
+            ))
+            .into());
         }
-    }
 
-    /// Launch Roblox via protocol handler
-    fn launch_roblox(&mut self) {
-        match self.booster.launch_roblox() {
-            Ok(()) => {
-                self.status_message = String::from("🚀 Launching Roblox...");
-            }
-            Err(e) => {
-                self.status_message = format!("❌ Launch failed: {e}");
-            }
+        // Check 4: Path validation (CRITICAL)
+        if !self.is_safe_path(pid) {
+            return Err(BoosterError::PathValidationFailed(format!(
+                "Process {pid} executable not in allowed Roblox directories"
+            ))
+            .into());
         }
+
+        Ok(())
     }
 
-    /// Render main UI
-    fn render_main_ui(&mut self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(5.0);
-            ui.heading(egui::RichText::new("🚀 Roblox Booster").size(18.0));
-            ui.label(
-                egui::RichText::new("Safe CPU Priority Optimizer")
-                    .size(11.0)
-                    .color(egui::Color32::GRAY),
-            );
-        });
+    /// Auto-detect and boost new Roblox processes (with safety limits)
+    pub fn auto_detect_and_boost(&mut self) -> Option<String> {
+        self.config.auto_detect_roblox.then(|| {
+            self.system.refresh_processes(ProcessesToUpdate::All, true);
 
-        ui.add_space(15.0);
-        ui.separator();
-        ui.add_space(10.0);
-
-        self.render_status(ui);
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(15.0);
-
-        self.render_controls(ui);
-
-        ui.add_space(15.0);
-        ui.separator();
-        ui.add_space(8.0);
-
-        self.render_footer(ui);
-    }
-
-    /// Render status section
-    fn render_status(&self, ui: &mut egui::Ui) {
-        ui.group(|ui| {
-            ui.set_min_width(380.0);
-
-            // Status indicator
-            ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Status:").strong());
-                let (color, text) = if self.booster_enabled {
-                    (egui::Color32::from_rgb(46, 204, 113), "● ACTIVE")
-                } else {
-                    (egui::Color32::GRAY, "○ INACTIVE")
-                };
-                ui.colored_label(color, egui::RichText::new(text).strong());
-            });
-
-            ui.add_space(5.0);
-
-            // Process count and stats (only when active)
-            if self.booster_enabled {
-                ui.horizontal(|ui| {
-                    ui.label("Roblox processes:");
-                    ui.colored_label(
-                        egui::Color32::from_rgb(52, 152, 219),
-                        self.roblox_count.to_string(),
-                    );
-                });
-
-                let stats = self.booster.get_stats();
-                if stats.processes_boosted > 0 {
-                    ui.horizontal(|ui| {
-                        ui.label("Optimized:");
-                        ui.colored_label(
-                            egui::Color32::from_rgb(46, 204, 113),
-                            format!("{} process(es)", stats.processes_boosted),
-                        );
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Priority:");
-                        let priority_text = self.config.priority_name();
-                        ui.colored_label(
-                            egui::Color32::from_rgb(241, 196, 15),
-                            priority_text,
-                        );
-                    });
-                }
-
-                ui.add_space(5.0);
+            // Safety limit: Don't boost too many processes
+            if self.roblox_pids.len() >= MAX_PROCESSES_TO_BOOST {
+                return Some(format!(
+                    "⚠️ Max processes reached ({}/{})",
+                    self.roblox_pids.len(),
+                    MAX_PROCESSES_TO_BOOST
+                ));
             }
 
-            // Status message
-            ui.separator();
-            ui.add_space(3.0);
+            let mut new_processes = Vec::new();
 
-            egui::ScrollArea::vertical()
-                .max_height(80.0)
-                .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new(&self.status_message)
-                            .size(11.0)
-                            .color(egui::Color32::LIGHT_GRAY),
-                    );
-                });
-        });
-    }
+            for (pid, process) in self.system.processes() {
+                let name = process.name().to_string_lossy();
+                let pid_u32 = pid.as_u32();
 
-    /// Render control buttons
-    fn render_controls(&mut self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            // Main toggle button
-            let (button_text, button_color) = if self.booster_enabled {
-                (
-                    "🟢 BOOSTER: ON",
-                    egui::Color32::from_rgb(46, 204, 113),
-                )
-            } else {
-                ("⚪ BOOSTER: OFF", egui::Color32::from_rgb(149, 165, 166))
-            };
-
-            let button = egui::Button::new(
-                egui::RichText::new(button_text)
-                    .size(16.0)
-                    .color(egui::Color32::WHITE)
-                    .strong(),
-            )
-            .fill(button_color)
-            .min_size(BUTTON_SIZE);
-
-            if ui.add(button).clicked() {
-                self.toggle_booster();
-            }
-
-            ui.add_space(12.0);
-
-            // Launch Roblox button
-            let launch_button = egui::Button::new(
-                egui::RichText::new("🎮 Launch Roblox")
-                    .size(14.0)
-                    .color(egui::Color32::WHITE),
-            )
-            .fill(egui::Color32::from_rgb(52, 152, 219))
-            .min_size(SMALL_BUTTON_SIZE);
-
-            if ui.add(launch_button).clicked() {
-                self.launch_roblox();
-            }
-
-            ui.add_space(12.0);
-
-            // Settings button
-            let settings_button = egui::Button::new(
-                egui::RichText::new("⚙️ Settings")
-                    .size(13.0)
-                    .color(egui::Color32::WHITE),
-            )
-            .fill(egui::Color32::from_rgb(127, 140, 141))
-            .min_size(SMALL_BUTTON_SIZE);
-
-            if ui.add(settings_button).clicked() {
-                self.show_settings = !self.show_settings;
-            }
-        });
-    }
-
-    /// Render footer info
-    fn render_footer(&self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            ui.label(
-                egui::RichText::new("🛡️ Safe Mode: Path-validated, Priority-only")
-                    .size(10.0)
-                    .color(egui::Color32::DARK_GRAY),
-            );
-            ui.label(
-                egui::RichText::new("No memory modification · No code injection")
-                    .size(10.0)
-                    .color(egui::Color32::DARK_GRAY),
-            );
-        });
-    }
-
-    /// Render settings window
-    fn render_settings_window(&mut self, ctx: &egui::Context) {
-        egui::Window::new("⚙️ Booster Settings")
-            .collapsible(false)
-            .resizable(false)
-            .default_width(320.0)
-            .show(ctx, |ui| {
-                let mut config_changed = false;
-
-                ui.heading("Configuration");
-                ui.add_space(10.0);
-
-                // Auto-start checkbox
-                config_changed |= ui
-                    .checkbox(
-                        &mut self.config.auto_start_booster,
-                        "🚀 Auto-start booster on launch",
-                    )
-                    .on_hover_text("Automatically enable booster when app starts")
-                    .changed();
-
-                ui.add_space(5.0);
-
-                // Auto-detect checkbox
-                config_changed |= ui
-                    .checkbox(&mut self.config.auto_detect_roblox, "🔍 Auto-detect Roblox")
-                    .on_hover_text("Automatically optimize Roblox when detected")
-                    .changed();
-
-                ui.add_space(5.0);
-
-                // Memory optimization (placeholder)
-                config_changed |= ui
-                    .checkbox(&mut self.config.clear_memory_cache, "💾 Memory optimization")
-                    .on_hover_text("Enable memory optimization (safe mode)")
-                    .changed();
-
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(10.0);
-
-                // Priority level selector
-                ui.label(egui::RichText::new("Process Priority Level:").strong());
-                ui.add_space(5.0);
-
-                let mut priority = self.config.priority_level as usize;
-
-                ui.group(|ui| {
-                    ui.vertical(|ui| {
-                        config_changed |= ui
-                            .radio_value(&mut priority, 0, "⚪ Normal")
-                            .on_hover_text("Standard priority (safest, minimal boost)")
-                            .changed();
-
-                        config_changed |= ui
-                            .radio_value(&mut priority, 1, "🟡 Above Normal")
-                            .on_hover_text("Higher priority (recommended, balanced)")
-                            .changed();
-
-                        config_changed |= ui
-                            .radio_value(&mut priority, 2, "🔴 High")
-                            .on_hover_text("Highest priority (maximum boost, may affect other apps)")
-                            .changed();
-                    });
-                });
-
-                self.config.priority_level = priority as u8;
-
-                ui.add_space(15.0);
-                ui.separator();
-                ui.add_space(10.0);
-
-                // Action buttons
-                ui.horizontal(|ui| {
-                    // Save button
-                    let save_button = egui::Button::new(
-                        egui::RichText::new("💾 Save").color(egui::Color32::WHITE),
-                    )
-                    .fill(egui::Color32::from_rgb(46, 204, 113));
-
-                    if ui.add(save_button).clicked() {
-                        match self.config.save() {
-                            Ok(()) => {
-                                self.booster.update_config(self.config.clone());
-                                self.status_message = String::from("✓ Settings saved successfully");
-                                self.show_settings = false;
-                            }
-                            Err(e) => {
-                                self.status_message = format!("❌ Save failed: {e}");
+                if Self::is_roblox_process(&name) && !self.roblox_pids.contains(&pid_u32) {
+                    // CRITICAL: Full safety check before boosting
+                    match self.is_safe_to_optimize(pid_u32) {
+                        Ok(()) => {
+                            if self.optimize_process(pid_u32).is_ok() {
+                                self.roblox_pids.insert(pid_u32);
+                                new_processes.push(name.into_owned());
                             }
                         }
+                        Err(e) => {
+                            eprintln!("⚠️ Skipped PID {pid_u32}: {e}");
+                        }
                     }
+                }
 
-                    ui.add_space(5.0);
+                // Safety: Don't process too many in one cycle
+                if new_processes.len() >= 2 {
+                    break;
+                }
+            }
 
-                    // Cancel button
-                    let cancel_button = egui::Button::new(
-                        egui::RichText::new("❌ Cancel").color(egui::Color32::WHITE),
-                    )
-                    .fill(egui::Color32::from_rgb(231, 76, 60));
+            // Clean up dead processes
+            self.roblox_pids
+                .retain(|&pid| self.system.process(Pid::from_u32(pid)).is_some());
 
-                    if ui.add(cancel_button).clicked() {
-                        self.config = Config::load();
-                        self.show_settings = false;
+            (!new_processes.is_empty()).then(|| {
+                format!(
+                    "✓ Auto-boosted {} process(es): {}",
+                    new_processes.len(),
+                    new_processes.join(", ")
+                )
+            })
+        })?
+    }
+
+    /// Enable optimizations with comprehensive safety checks
+    pub fn enable(&mut self) -> Result<String> {
+        self.system.refresh_all();
+
+        let mut stats = OptimizationStats {
+            priority_level: self.config.priority_level,
+            ..Default::default()
+        };
+
+        let mut optimizations = Vec::new();
+        let mut errors = Vec::new();
+
+        // Collect and validate Roblox processes
+        let mut roblox_processes: Vec<(u32, String)> = Vec::new();
+        for (pid, process) in self.system.processes() {
+            let name = process.name().to_string_lossy();
+            if Self::is_roblox_process(&name) {
+                roblox_processes.push((pid.as_u32(), name.into_owned()));
+            }
+        }
+
+        // Safety check: Process count
+        if roblox_processes.is_empty() {
+            return Err(BoosterError::NoProcessesFound.into());
+        }
+
+        if roblox_processes.len() > MAX_PROCESSES_TO_BOOST {
+            return Err(BoosterError::SafetyCheckFailed(format!(
+                "Too many Roblox processes ({} > {}). This may indicate a problem.",
+                roblox_processes.len(),
+                MAX_PROCESSES_TO_BOOST
+            ))
+            .into());
+        }
+
+        // Phase 1: Validate and optimize each process
+        for (pid_u32, name) in roblox_processes {
+            // Full safety validation
+            match self.is_safe_to_optimize(pid_u32) {
+                Ok(()) => {
+                    match self.optimize_process(pid_u32) {
+                        Ok(()) => {
+                            self.roblox_pids.insert(pid_u32);
+                            stats.processes_boosted += 1;
+                            optimizations.push(format!("✓ Optimized {name} (PID: {pid_u32})"));
+                        }
+                        Err(e) => {
+                            errors.push(format!("✗ Failed {name}: {e}"));
+                        }
                     }
+                }
+                Err(e) => {
+                    errors.push(format!("⚠️ Skipped {name}: {e}"));
+                }
+            }
+        }
 
-                    ui.add_space(10.0);
+        // Phase 2: Memory optimization (placeholder only, no actual modification)
+        if self.config.clear_memory_cache {
+            stats.memory_cleared = true;
+            optimizations.push("✓ Memory optimization enabled".into());
+        }
 
-                    // Unsaved indicator
-                    if config_changed {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(241, 196, 15),
-                            egui::RichText::new("⚠ Unsaved changes").strong(),
-                        );
+        self.last_stats = stats.clone();
+
+        // Build result message
+        if optimizations.is_empty() {
+            return Err(BoosterError::NoProcessesFound.into());
+        }
+
+        let mut message = format!(
+            "🚀 Booster enabled - {} process(es) optimized\n\n",
+            stats.processes_boosted
+        );
+
+        message.push_str(&optimizations.join("\n"));
+
+        if !errors.is_empty() {
+            message.push_str("\n\n⚠️ Warnings:\n");
+            message.push_str(&errors.join("\n"));
+        }
+
+        Ok(message)
+    }
+
+    /// Optimize single process (MINIMAL permissions, priority only)
+    fn optimize_process(&self, pid: u32) -> Result<()> {
+        #[cfg(target_os = "windows")]
+        unsafe {
+            // MINIMAL permissions: Only what we absolutely need
+            let handle = OpenProcess(
+                PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION,
+                false,
+                pid,
+            )
+            .map_err(|e| BoosterError::ProcessOpen {
+                pid,
+                reason: format!("{e:?}"),
+            })?;
+
+            // Check current priority first (avoid unnecessary changes)
+            let current_priority = GetPriorityClass(handle);
+
+            // Determine target priority
+            let target_priority = match self.config.priority_level {
+                0 => NORMAL_PRIORITY_CLASS,
+                1 => ABOVE_NORMAL_PRIORITY_CLASS,
+                _ => HIGH_PRIORITY_CLASS,
+            };
+
+            // Don't change if already at target or higher
+            if current_priority >= target_priority.0 {
+                let _ = CloseHandle(handle);
+                return Ok(());
+            }
+
+            // Set priority (ONLY operation performed)
+            SetPriorityClass(handle, target_priority).map_err(|e| {
+                let _ = CloseHandle(handle);
+                BoosterError::PrioritySet {
+                    pid,
+                    reason: format!("{e:?}"),
+                }
+            })?;
+
+            // Verify priority was set correctly
+            let new_priority = GetPriorityClass(handle);
+            if new_priority != target_priority.0 {
+                let _ = CloseHandle(handle);
+                return Err(BoosterError::PrioritySet {
+                    pid,
+                    reason: "Priority verification failed".into(),
+                }
+                .into());
+            }
+
+            CloseHandle(handle).ok();
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = pid;
+            anyhow::bail!("Windows-only feature")
+        }
+    }
+
+    /// Disable all optimizations
+    pub fn disable(&mut self) -> Result<String> {
+        let mut restored = 0;
+        let mut errors = Vec::new();
+
+        for &pid in &self.roblox_pids {
+            match self.restore_process(pid) {
+                Ok(()) => restored += 1,
+                Err(e) => errors.push(format!("PID {pid}: {e}")),
+            }
+        }
+
+        let count = self.roblox_pids.len();
+        self.roblox_pids.clear();
+        self.last_stats = OptimizationStats::default();
+
+        let mut message = format!("🔻 Booster disabled - {restored}/{count} processes restored");
+
+        if !errors.is_empty() {
+            message.push_str("\n\n⚠️ Warnings:\n");
+            message.push_str(&errors.join("\n"));
+        }
+
+        Ok(message)
+    }
+
+    /// Get current Roblox process count (with path validation)
+    pub fn get_roblox_process_count(&mut self) -> usize {
+        self.system.refresh_processes(ProcessesToUpdate::All, true);
+        
+        self.system
+            .processes()
+            .iter()
+            .filter(|(pid, p)| {
+                let name = p.name().to_string_lossy();
+                Self::is_roblox_process(&name) && self.is_safe_path(pid.as_u32())
+            })
+            .count()
+    }
+
+    /// Launch Roblox (SAFE: Protocol handler only)
+    pub fn launch_roblox(&self) -> Result<()> {
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+
+            // ONLY use protocol handler (safest method)
+            Command::new("cmd")
+                .args(["/C", "start", "", "roblox://"])
+                .spawn()
+                .context("Failed to launch Roblox via protocol handler")?;
+
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        anyhow::bail!("Roblox is Windows-only")
+    }
+
+    /// Restore process to normal priority
+    fn restore_process(&self, pid: u32) -> Result<()> {
+        #[cfg(target_os = "windows")]
+        unsafe {
+            let handle = OpenProcess(
+                PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION,
+                false,
+                pid,
+            )
+            .map_err(|e| BoosterError::ProcessOpen {
+                pid,
+                reason: format!("{e:?}"),
+            })?;
+
+            let current = GetPriorityClass(handle);
+
+            // Only restore if boosted
+            if current == HIGH_PRIORITY_CLASS.0 || current == ABOVE_NORMAL_PRIORITY_CLASS.0 {
+                SetPriorityClass(handle, NORMAL_PRIORITY_CLASS).map_err(|e| {
+                    let _ = CloseHandle(handle);
+                    BoosterError::PrioritySet {
+                        pid,
+                        reason: format!("{e:?}"),
                     }
-                });
-            });
+                })?;
+            }
+
+            CloseHandle(handle).ok();
+            Ok(())
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = pid;
+            anyhow::bail!("Windows-only feature")
+        }
     }
 }
 
-impl eframe::App for RobloxBoosterApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Auto-detect with interval
-        if self.booster_enabled && self.last_check.elapsed() > AUTO_DETECT_INTERVAL {
-            self.last_check = Instant::now();
-
-            if let Some(msg) = self.booster.auto_detect_and_boost() {
-                self.status_message = msg;
-            }
-
-            self.roblox_count = self.booster.get_roblox_process_count();
-        }
-
-        // Request repaint for smooth animations
-        ctx.request_repaint_after(AUTO_DETECT_INTERVAL);
-
-        // Render main panel
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.render_main_ui(ui);
-        });
-
-        // Render settings window if open
-        if self.show_settings {
-            self.render_settings_window(ctx);
-        }
+impl Drop for SystemBooster {
+    fn drop(&mut self) {
+        let _ = self.disable();
     }
 }

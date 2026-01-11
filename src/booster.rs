@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use thiserror::Error;
 
