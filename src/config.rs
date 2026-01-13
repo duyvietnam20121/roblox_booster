@@ -31,7 +31,7 @@ impl Default for Config {
             auto_detect_roblox: true,
             priority_level: 1, // Above Normal (safe default)
             clear_memory_cache: true,
-            enable_gpu_boost: true, // v2.0: GPU boost enabled by default
+            enable_gpu_boost: true,   // v2.0: GPU boost enabled by default
             custom_roblox_path: None, // v2.0: Auto-detect by default
         }
     }

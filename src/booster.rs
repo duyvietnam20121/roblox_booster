@@ -522,7 +522,8 @@ impl SystemBooster {
                 PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION,
                 false,
                 pid,
-            ).map_err(|e| BoosterError::ProcessOpen {
+            )
+            .map_err(|e| BoosterError::ProcessOpen {
                 pid,
                 reason: format!("{e:?}"),
             })?;
