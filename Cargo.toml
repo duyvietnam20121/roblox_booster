@@ -1,10 +1,10 @@
 [package]
 name = "roblox_booster"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Made by AI"]
-description = "A system performance booster for Roblox"
+description = "A system performance booster for Roblox with GPU optimization"
 license = "MIT"
 repository = "https://github.com/duyvietnam20121/roblox_booster"
 keywords = ["roblox", "performance", "booster", "gaming", "optimizer"]
@@ -32,6 +32,7 @@ windows = { version = "0.58", features = [
     "Win32_System_Threading",
     "Win32_System_ProcessStatus",
     "Win32_System_Memory",
+    "Win32_Graphics_Dxgi",
 ] }
 
 [build-dependencies]
