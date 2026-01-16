@@ -8,10 +8,11 @@ use crate::config::Config;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::{
-    Foundation::{CloseHandle, HANDLE},
+    Foundation::CloseHandle,
     System::Threading::{
-        AABOVE_NORMAL_PRIORITY_CLASS, GetPriorityClass, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
-        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION, SetPriorityClass,
+        GetPriorityClass, OpenProcess, SetPriorityClass,
+        ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS,
+        PROCESS_QUERY_INFORMATION, PROCESS_SET_INFORMATION,
     },
 };
 
@@ -36,24 +37,22 @@ pub enum BoosterError {
     GpuOptimizationFailed(String),
 }
 
-/// Process optimization statistics v2.0
+/// Process optimization stats v2.0
 #[derive(Debug, Default, Clone)]
 pub struct OptimizationStats {
     pub processes_boosted: usize,
     pub memory_cleared: bool,
+    #[allow(dead_code)]
     pub priority_level: u8,
-    pub gpu_boosted: bool, // v2.0: GPU optimization status
+    pub gpu_boosted: bool,
 }
 
-/// Version 2.0 constants
+/// Version constants
 const VERSION: &str = "2.0.0";
 const MAX_PROCESSES_TO_BOOST: usize = 5;
 const MIN_PROCESS_LIFETIME_MS: u64 = 3000;
 
-/// Default Roblox path (hardcoded as requested)
-const DEFAULT_ROBLOX_PATH: &str = r"C:\Users\Admin\AppData\Local\Roblox\Versions";
-
-/// SystemBooster v2.0 - GPU + Configurable Path + AV-Safe
+/// SystemBooster v2.0 - Modern dynamic path detection + GPU optimization
 pub struct SystemBooster {
     system: System,
     roblox_pids: HashSet<u32>,
@@ -63,10 +62,10 @@ pub struct SystemBooster {
 }
 
 impl SystemBooster {
-    /// Create new SystemBooster v2.0
+    /// Create new SystemBooster v2.0 with dynamic path detection
     #[must_use]
     pub fn new(config: Config) -> Self {
-        let allowed_paths = Self::build_allowed_paths_v2(&config);
+        let allowed_paths = Self::detect_roblox_paths(&config);
         
         Self {
             system: System::new_all(),
@@ -77,29 +76,22 @@ impl SystemBooster {
         }
     }
 
-    /// v2.0: Build allowed paths with custom path support
-    fn build_allowed_paths_v2(config: &Config) -> Vec<PathBuf> {
+    /// Modern dynamic Roblox path detection (no hardcoded paths)
+    fn detect_roblox_paths(config: &Config) -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        // Priority 1: Custom path from config
+        // Priority 1: Custom user-defined path
         if let Some(ref custom_path) = config.custom_roblox_path {
             if !custom_path.is_empty() {
                 let path = PathBuf::from(custom_path);
                 if path.exists() {
                     paths.push(path);
-                    return paths; // Use only custom path
+                    return paths;
                 }
             }
         }
 
-        // Priority 2: Hardcoded default path
-        let default_path = PathBuf::from(DEFAULT_ROBLOX_PATH);
-        if default_path.exists() {
-            paths.push(default_path);
-            return paths;
-        }
-
-        // Priority 3: Dynamic detection (fallback)
+        // Priority 2: Standard LocalAppData location (most common)
         if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
             let roblox_versions = PathBuf::from(localappdata).join("Roblox").join("Versions");
             if roblox_versions.exists() {
@@ -107,17 +99,22 @@ impl SystemBooster {
             }
         }
 
-        // Last resort: Program Files
+        // Priority 3: Microsoft Store version
+        if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
+            let store_roblox = PathBuf::from(localappdata)
+                .join("Packages")
+                .join("ROBLOXCORPORATION.ROBLOX_55nm5eh3cm0pr");
+            if store_roblox.exists() {
+                paths.push(store_roblox);
+            }
+        }
+
+        // Priority 4: Program Files (legacy installations)
         if let Ok(programfiles) = std::env::var("ProgramFiles(x86)") {
             let roblox_versions = PathBuf::from(programfiles).join("Roblox").join("Versions");
             if roblox_versions.exists() {
                 paths.push(roblox_versions);
             }
-        }
-
-        // If still empty, add default anyway
-        if paths.is_empty() {
-            paths.push(PathBuf::from(DEFAULT_ROBLOX_PATH));
         }
 
         paths
@@ -129,18 +126,18 @@ impl SystemBooster {
         VERSION
     }
 
-    /// Get current Roblox path being used
+    /// Get detected Roblox paths
     #[must_use]
     pub fn get_roblox_path(&self) -> String {
         self.allowed_paths
             .first()
             .map(|p| p.display().to_string())
-            .unwrap_or_else(|| DEFAULT_ROBLOX_PATH.to_string())
+            .unwrap_or_else(|| "No Roblox installation detected".to_string())
     }
 
     /// Update configuration and rebuild paths
     pub fn update_config(&mut self, config: Config) {
-        self.allowed_paths = Self::build_allowed_paths_v2(&config);
+        self.allowed_paths = Self::detect_roblox_paths(&config);
         self.config = config;
     }
 
@@ -150,7 +147,7 @@ impl SystemBooster {
         &self.last_stats
     }
 
-    /// Check if process name is Roblox (strict filtering)
+    /// Check if process name is Roblox (enhanced filtering)
     fn is_roblox_process(name: &str) -> bool {
         let name_lower = name.to_lowercase();
         let contains_roblox = name_lower.contains("roblox") || name_lower.contains("rbx");
@@ -166,7 +163,7 @@ impl SystemBooster {
         contains_roblox && !is_excluded
     }
 
-    /// Validate process path
+    /// Validate process is from allowed Roblox directories
     fn is_safe_path(&self, pid: u32) -> bool {
         #[cfg(target_os = "windows")]
         {
@@ -187,7 +184,7 @@ impl SystemBooster {
         false
     }
 
-    /// Comprehensive safety check
+    /// Comprehensive safety validation
     fn is_safe_to_optimize(&self, pid: u32) -> Result<()> {
         let Some(process) = self.system.process(Pid::from_u32(pid)) else {
             return Err(BoosterError::SafetyCheckFailed(format!(
@@ -213,14 +210,14 @@ impl SystemBooster {
 
         if !self.is_safe_path(pid) {
             return Err(BoosterError::PathValidationFailed(format!(
-                "Process {pid} executable not in allowed Roblox directories"
+                "Process {pid} not in validated Roblox directories"
             )).into());
         }
 
         Ok(())
     }
 
-    /// Auto-detect and boost
+    /// Auto-detect and boost new Roblox processes
     pub fn auto_detect_and_boost(&mut self) -> Option<String> {
         self.config.auto_detect_roblox.then(|| {
             self.system.refresh_processes(ProcessesToUpdate::All, true);
@@ -242,7 +239,7 @@ impl SystemBooster {
                 if Self::is_roblox_process(&name) && !self.roblox_pids.contains(&pid_u32) {
                     match self.is_safe_to_optimize(pid_u32) {
                         Ok(()) => {
-                            if self.optimize_process(pid_u32).is_ok() {
+                            if self.optimize_process_full(pid_u32).is_ok() {
                                 self.roblox_pids.insert(pid_u32);
                                 new_processes.push(name.into_owned());
                             }
@@ -270,7 +267,7 @@ impl SystemBooster {
         })?
     }
 
-    /// Enable optimizations v2.0
+    /// Enable system optimizations v2.0
     pub fn enable(&mut self) -> Result<String> {
         self.system.refresh_all();
 
@@ -282,7 +279,7 @@ impl SystemBooster {
         let mut optimizations = Vec::new();
         let mut errors = Vec::new();
 
-        // Collect Roblox processes
+        // Collect validated Roblox processes
         let mut roblox_processes: Vec<(u32, String)> = Vec::new();
         for (pid, process) in self.system.processes() {
             let name = process.name().to_string_lossy();
@@ -307,7 +304,7 @@ impl SystemBooster {
         for (pid_u32, name) in &roblox_processes {
             match self.is_safe_to_optimize(*pid_u32) {
                 Ok(()) => {
-                    match self.optimize_process(*pid_u32) {
+                    match self.optimize_process_full(*pid_u32) {
                         Ok(()) => {
                             self.roblox_pids.insert(*pid_u32);
                             stats.processes_boosted += 1;
@@ -324,7 +321,7 @@ impl SystemBooster {
             }
         }
 
-        // Phase 2: GPU Priority optimization (v2.0 NEW)
+        // Phase 2: GPU Priority optimization (v2.0)
         if self.config.enable_gpu_boost {
             for (pid_u32, name) in &roblox_processes {
                 if self.roblox_pids.contains(pid_u32) {
@@ -369,11 +366,10 @@ impl SystemBooster {
         Ok(message)
     }
 
-    /// Optimize CPU priority (AV-safe method)
-    fn optimize_process(&self, pid: u32) -> Result<()> {
+    /// Optimize process CPU priority (full optimization)
+    fn optimize_process_full(&self, pid: u32) -> Result<()> {
         #[cfg(target_os = "windows")]
         unsafe {
-            // Use minimal required permissions
             let handle = OpenProcess(
                 PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION,
                 false,
@@ -391,14 +387,14 @@ impl SystemBooster {
                 _ => HIGH_PRIORITY_CLASS,
             };
 
+            // Skip if already at target or higher priority
             if current_priority >= target_priority.0 {
                 let _ = CloseHandle(handle);
                 return Ok(());
             }
 
-            // AV-safe: Use standard Windows API pattern
             let result = SetPriorityClass(handle, target_priority);
-            let _ = CloseHandle(handle); // Always cleanup
+            let _ = CloseHandle(handle);
 
             result.map_err(|e| BoosterError::PrioritySet {
                 pid,
@@ -415,15 +411,14 @@ impl SystemBooster {
         }
     }
 
-    /// v2.0: Optimize GPU priority (Windows 10+ DirectX)
+    /// v2.0: Optimize GPU priority for DirectX applications
     fn optimize_gpu_priority(&self, pid: u32) -> Result<()> {
         #[cfg(target_os = "windows")]
         unsafe {
-            // GPU priority is set via process priority class
-            // Windows automatically gives higher GPU scheduling priority
-            // to processes with higher CPU priority
+            // GPU scheduling in Windows leverages CPU priority class
+            // Higher CPU priority = higher GPU scheduling priority
+            // This is the modern, safe approach for GPU optimization
             
-            // This is AV-safe: We're just reading the priority we already set
             let handle = OpenProcess(
                 PROCESS_QUERY_INFORMATION,
                 false,
@@ -436,12 +431,12 @@ impl SystemBooster {
             let priority = GetPriorityClass(handle);
             let _ = CloseHandle(handle);
 
-            // Verify GPU-friendly priority
+            // Verify GPU-friendly priority level
             if priority == HIGH_PRIORITY_CLASS.0 || priority == ABOVE_NORMAL_PRIORITY_CLASS.0 {
                 Ok(())
             } else {
                 Err(BoosterError::GpuOptimizationFailed(
-                    "Process priority too low for GPU boost".to_string()
+                    "CPU priority too low for GPU boost".to_string()
                 ).into())
             }
         }
@@ -453,7 +448,7 @@ impl SystemBooster {
         }
     }
 
-    /// Disable optimizations
+    /// Disable optimizations v2.0
     pub fn disable(&mut self) -> Result<String> {
         let mut restored = 0;
         let mut errors = Vec::new();
@@ -482,7 +477,7 @@ impl SystemBooster {
         Ok(message)
     }
 
-    /// Get Roblox process count
+    /// Get validated Roblox process count
     pub fn get_roblox_process_count(&mut self) -> usize {
         self.system.refresh_processes(ProcessesToUpdate::All, true);
         
@@ -496,7 +491,7 @@ impl SystemBooster {
             .count()
     }
 
-    /// Launch Roblox (safe protocol handler)
+    /// Launch Roblox via protocol handler (modern method)
     pub fn launch_roblox(&self) -> Result<()> {
         #[cfg(target_os = "windows")]
         {
@@ -505,7 +500,7 @@ impl SystemBooster {
             Command::new("cmd")
                 .args(["/C", "start", "", "roblox://"])
                 .spawn()
-                .context("Failed to launch Roblox")?;
+                .context("Failed to launch Roblox via protocol handler")?;
 
             Ok(())
         }
@@ -530,6 +525,7 @@ impl SystemBooster {
 
             let current = GetPriorityClass(handle);
 
+            // Only restore if currently boosted
             if current == HIGH_PRIORITY_CLASS.0 || current == ABOVE_NORMAL_PRIORITY_CLASS.0 {
                 let result = SetPriorityClass(handle, NORMAL_PRIORITY_CLASS);
                 let _ = CloseHandle(handle);
