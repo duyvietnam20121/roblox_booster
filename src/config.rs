@@ -99,8 +99,9 @@ impl Config {
         Ok(())
     }
 
-    /// Validate configuration values
+    /// Validate configuration values (utility function for future use)
     #[must_use]
+    #[allow(dead_code)]
     pub fn is_valid(&self) -> bool {
         // CPU priority must be 0-2
         if self.priority_level > 2 {
@@ -129,8 +130,9 @@ impl Config {
         }
     }
 
-    /// Get GPU boost status as string
+    /// Get GPU boost status as string (utility for future UI)
     #[must_use]
+    #[allow(dead_code)]
     pub const fn gpu_status(&self) -> &'static str {
         if self.enable_gpu_boost {
             "Enabled"
@@ -139,8 +141,9 @@ impl Config {
         }
     }
 
-    /// Get effective Roblox path (custom or default)
+    /// Get effective Roblox path (utility for diagnostics)
     #[must_use]
+    #[allow(dead_code)]
     pub fn get_roblox_path(&self) -> String {
         if let Some(ref custom_path) = self.custom_roblox_path {
             if !custom_path.is_empty() && PathBuf::from(custom_path).exists() {
@@ -148,8 +151,8 @@ impl Config {
             }
         }
 
-        // Default path for current user
-        r"C:\Users\Admin\AppData\Local\Roblox\Versions".to_string()
+        // Fallback message
+        "Auto-detect from system".to_string()
     }
 }
 
@@ -206,5 +209,16 @@ mod tests {
         // Empty string should be valid
         config.custom_roblox_path = Some(String::new());
         assert!(config.is_valid());
+    }
+
+    #[test]
+    fn test_gpu_status() {
+        let mut config = Config::default();
+        
+        config.enable_gpu_boost = true;
+        assert_eq!(config.gpu_status(), "Enabled");
+        
+        config.enable_gpu_boost = false;
+        assert_eq!(config.gpu_status(), "Disabled");
     }
 }
