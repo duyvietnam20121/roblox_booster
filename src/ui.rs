@@ -61,7 +61,8 @@ impl RobloxBoosterApp {
             "🔴 Booster: OFF"
         };
 
-        let button = egui::Button::new(button_text).min_size(egui::vec2(200.0, 40.0));
+        let button = egui::Button::new(button_text)
+            .min_size(egui::vec2(200.0, 40.0));
 
         if ui.add(button).clicked() {
             self.toggle_booster();
@@ -70,7 +71,8 @@ impl RobloxBoosterApp {
         ui.add_space(10.0);
 
         // Launch Roblox button
-        let launch_button = egui::Button::new("🎮 Launch Roblox").min_size(egui::vec2(200.0, 35.0));
+        let launch_button = egui::Button::new("🎮 Launch Roblox")
+            .min_size(egui::vec2(200.0, 35.0));
 
         if ui.add(launch_button).clicked() {
             match self.booster.launch_roblox() {
@@ -86,7 +88,8 @@ impl RobloxBoosterApp {
         ui.add_space(10.0);
 
         // Settings button
-        let settings_button = egui::Button::new("⚙️ Settings").min_size(egui::vec2(200.0, 30.0));
+        let settings_button = egui::Button::new("⚙️ Settings")
+            .min_size(egui::vec2(200.0, 30.0));
 
         if ui.add(settings_button).clicked() {
             self.show_settings = !self.show_settings;
@@ -105,14 +108,8 @@ impl RobloxBoosterApp {
             ui.add_space(5.0);
             ui.label(format!("• Processes boosted: {}", stats.processes_boosted));
             ui.label(format!("• Priority: {}", self.config.priority_name()));
-            ui.label(format!(
-                "• GPU boost: {}",
-                if stats.gpu_boosted { "✓" } else { "✗" }
-            ));
-            ui.label(format!(
-                "• Memory: {}",
-                if stats.memory_cleared { "✓" } else { "✗" }
-            ));
+            ui.label(format!("• GPU boost: {}", if stats.gpu_boosted { "✓" } else { "✗" }));
+            ui.label(format!("• Memory: {}", if stats.memory_cleared { "✓" } else { "✗" }));
         }
     }
 
@@ -191,8 +188,8 @@ impl RobloxBoosterApp {
 
         // Save/Cancel buttons
         ui.horizontal(|ui| {
-            let save_button =
-                egui::Button::new("💾 Save Settings").min_size(egui::vec2(120.0, 30.0));
+            let save_button = egui::Button::new("💾 Save Settings")
+                .min_size(egui::vec2(120.0, 30.0));
 
             if ui.add(save_button).clicked() {
                 // Update custom path
