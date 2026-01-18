@@ -16,6 +16,14 @@ pub struct Config {
     
     /// Memory optimization (placeholder, no actual memory modification)
     pub clear_memory_cache: bool,
+    
+    /// Enable GPU priority boost (v2.0)
+    #[serde(default)]
+    pub enable_gpu_boost: bool,
+    
+    /// Custom Roblox installation path (v2.0)
+    #[serde(default)]
+    pub custom_roblox_path: Option<String>,
 }
 
 impl Default for Config {
@@ -25,6 +33,8 @@ impl Default for Config {
             auto_detect_roblox: true,
             priority_level: 1, // Above Normal (conservative default)
             clear_memory_cache: true,
+            enable_gpu_boost: false,
+            custom_roblox_path: None,
         }
     }
 }
