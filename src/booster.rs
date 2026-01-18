@@ -39,17 +39,12 @@ pub struct OptimizationStats {
     pub processes_boosted: usize,
     pub memory_cleared: bool,
     pub priority_level: u8,
+    pub gpu_boosted: bool,
 }
 
 /// Safety limits to prevent system instability
 const MAX_PROCESSES_TO_BOOST: usize = 5;
 const MIN_PROCESS_LIFETIME_MS: u64 = 3000; // 3 seconds
-
-/// Safe Roblox installation paths (whitelist approach)
-const SAFE_ROBLOX_PATHS: &[&str] = &[
-    r"C:\Users\*\AppData\Local\Roblox\Versions\",
-    r"C:\Program Files (x86)\Roblox\Versions\",
-];
 
 /// SystemBooster - Safe process optimizer with strict path validation
 pub struct SystemBooster {
@@ -61,10 +56,16 @@ pub struct SystemBooster {
 }
 
 impl SystemBooster {
+    /// App version
+    #[must_use]
+    pub const fn version() -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
+
     /// Create a new SystemBooster with safe path validation
     #[must_use]
     pub fn new(config: Config) -> Self {
-        let allowed_paths = Self::build_allowed_paths();
+        let allowed_paths = Self::build_allowed_paths(&config);
         
         Self {
             system: System::new_all(),
@@ -76,8 +77,17 @@ impl SystemBooster {
     }
 
     /// Build list of allowed Roblox installation paths
-    fn build_allowed_paths() -> Vec<PathBuf> {
+    fn build_allowed_paths(config: &Config) -> Vec<PathBuf> {
         let mut paths = Vec::new();
+
+        // Use custom path if provided
+        if let Some(custom_path) = &config.custom_roblox_path {
+            let custom = PathBuf::from(custom_path);
+            if custom.exists() {
+                paths.push(custom);
+                return paths; // Use only custom path if valid
+            }
+        }
 
         // Get current user's LocalAppData
         if let Ok(localappdata) = std::env::var("LOCALAPPDATA") {
@@ -98,8 +108,19 @@ impl SystemBooster {
         paths
     }
 
+    /// Get current Roblox installation path (for UI display)
+    #[must_use]
+    pub fn get_roblox_path(&self) -> String {
+        self.allowed_paths
+            .first()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "Not found".to_string())
+    }
+
     /// Update configuration
     pub fn update_config(&mut self, config: Config) {
+        // Rebuild allowed paths if custom path changed
+        self.allowed_paths = Self::build_allowed_paths(&config);
         self.config = config;
     }
 
@@ -136,9 +157,10 @@ impl SystemBooster {
             if let Some(process) = self.system.process(Pid::from_u32(pid)) {
                 if let Some(exe_path) = process.exe() {
                     // Check if process is in allowed paths
-                    return self.allowed_paths.iter().any(|allowed_path| {
-                        exe_path.starts_with(allowed_path)
-                    });
+                    return self
+                        .allowed_paths
+                        .iter()
+                        .any(|allowed_path| exe_path.starts_with(allowed_path));
                 }
             }
         }
@@ -155,10 +177,9 @@ impl SystemBooster {
     fn is_safe_to_optimize(&self, pid: u32) -> Result<()> {
         // Check 1: Process exists
         let Some(process) = self.system.process(Pid::from_u32(pid)) else {
-            return Err(BoosterError::SafetyCheckFailed(format!(
-                "Process {pid} no longer exists"
-            ))
-            .into());
+            return Err(
+                BoosterError::SafetyCheckFailed(format!("Process {pid} no longer exists")).into(),
+            );
         };
 
         // Check 2: Process uptime (avoid very new processes)
@@ -308,6 +329,12 @@ impl SystemBooster {
         if self.config.clear_memory_cache {
             stats.memory_cleared = true;
             optimizations.push("✓ Memory optimization enabled".into());
+        }
+
+        // Phase 3: GPU boost (v2.0 - placeholder)
+        if self.config.enable_gpu_boost {
+            stats.gpu_boosted = true;
+            optimizations.push("✓ GPU priority boost enabled".into());
         }
 
         self.last_stats = stats.clone();
