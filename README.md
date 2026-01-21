@@ -1,236 +1,117 @@
 # 🚀 Roblox Booster
 
-A modern system performance optimizer for Roblox, built with Rust and egui.
+Game booster tối ưu hóa hiệu suất Roblox một cách an toàn (không vi phạm ToS).
 
-## ✨ Features
+## ✨ Tính năng
 
-- **Auto Booster**: Toggle system optimizations on/off
-- **Auto-detect**: Automatically detects and boosts Roblox processes
-- **Launch Roblox**: Start Roblox directly from the app
-- **Configurable Settings**: Persistent configuration with JSON
-- **Priority Control**: Adjust process priority (Normal, Above Normal, High)
-- **Memory Optimization**: Clear system cache for better performance
-- **Live Monitoring**: Real-time Roblox process count
+- ✅ **Auto Boost**: Tự động tối ưu khi phát hiện Roblox
+- ⚡ **Manual Boost**: Boost thủ công bất cứ lúc nào
+- 🎚️ **3 Optimization Levels**:
+  - **Low**: Tăng CPU priority
+  - **Medium**: CPU + Memory optimization
+  - **High**: Maximum performance
+- 💾 **Lưu settings**: Config tự động save
+- 🔒 **An toàn**: Không inject code, không đọc/ghi memory
 
-## 🛠️ Build Instructions
+## 🛠️ Cách tối ưu
 
-### Prerequisites
+App sử dụng Windows API để:
+1. Tăng CPU priority của process Roblox
+2. Trim working set để giải phóng RAM không dùng
+3. **KHÔNG** inject code hoặc truy cập vào game
+
+## 📦 Build
+
+### Requirements
+- Rust 1.85+ (Edition 2024)
+- Windows 10/11 (runtime)
+- **Cross-compile từ Linux**: MinGW-w64
+
+### Build trên Windows
 
 ```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# Debug build
+cargo build
 
-# Linux/Mac: Install MinGW for cross-compilation
-sudo apt update && sudo apt install -y mingw-w64
-
-# Add Windows target
-rustup target add x86_64-pc-windows-gnu
+# Release build (tối ưu)
+cargo build --release
 ```
 
-### Quick Build
+### Cross-compile từ Linux (Codespaces/WSL)
 
 ```bash
-# Simple build (uses .cargo/config.toml automatically)
+# Setup (chỉ lần đầu)
+chmod +x setup.sh
+./setup.sh
+
+# hoặc dùng just
+just setup
+
+# Build
 cargo build --release
 
-# Or with just (recommended)
-cargo install just
-just build
+# Binary: target/x86_64-pc-windows-gnu/release/roblox_booster.exe
 ```
 
-### Using Just (Modern Task Runner)
+### Sử dụng Just (recommended)
 
 ```bash
-just setup      # Install dev dependencies
-just build      # Build release
-just run        # Build and run
-just test       # Run tests
-just lint       # Run clippy
-just fmt        # Format code
-just ci         # Full CI check
-just dist       # Build and show info
-just clean      # Clean artifacts
+# Install just: cargo install just
+
+just setup          # Setup lần đầu
+just build          # Build release
+just check          # Format + Lint + Test + Build
+just build-info     # Show build info
+just info           # Show binary info
 ```
 
-## 🎯 Modern Rust Features Used
+## 🎮 Cách dùng
 
-- **Rust 1.85** - Latest stable with Edition 2024
-- **Edition 2024** - Newest Rust edition features
-- **eframe 0.29 / egui 0.29** - Latest GUI framework
-- **sysinfo 0.32** - Modern system information API
-- **anyhow & thiserror** - Modern error handling
-- **Option::then** - Cleaner conditional returns
-- **must_use** - Compiler warnings for unused returns
-- **rust-toolchain.toml** - Automatic toolchain management
-- **.cargo/config.toml** - Project-specific cargo configuration
-- **just** - Modern task runner
+1. Mở Roblox
+2. Chạy Roblox Booster
+3. Bật **Auto Boost** hoặc nhấn **Boost Ngay**
+4. Vào **Settings** để chọn optimization level
 
-## 📦 Project Structure
+## ⚙️ Settings
+
+- **Optimization Level**: Chọn mức độ tối ưu (Low/Medium/High)
+- **Auto-detect Roblox**: Tự động phát hiện process Roblox
+
+## 📁 Project Structure
 
 ```
 roblox_booster/
-├── .cargo/
-│   └── config.toml          # Cargo configuration
 ├── src/
-│   ├── main.rs              # Entry point
-│   ├── booster.rs           # Core logic (anyhow error handling)
-│   ├── config.rs            # Configuration management
-│   └── ui.rs                # Modern egui UI
-├── build.rs                 # Windows metadata
-├── Cargo.toml               # Dependencies
-├── rust-toolchain.toml      # Rust version pinning
-├── justfile                 # Modern task runner
+│   ├── main.rs       # Entry point + icon
+│   ├── booster.rs    # Core optimization logic
+│   ├── config.rs     # Config management (JSON)
+│   └── ui.rs         # GUI với egui
+├── Cargo.toml
+├── .gitignore
 └── README.md
 ```
 
-## ⚙️ Configuration
+## 🔐 An toàn
 
-Config file location:
-- Windows: `%APPDATA%\roblox_booster\config.json`
-- Linux/Mac: `~/.config/roblox_booster/config.json`
+- ✅ Chỉ dùng Windows API công khai
+- ✅ Không vi phạm Roblox ToS
+- ✅ Không thu thập dữ liệu
+- ✅ Open source, audit được
 
-Example:
-```json
-{
-  "auto_start_booster": false,
-  "auto_detect_roblox": true,
-  "priority_level": 2,
-  "clear_memory_cache": true
-}
-```
+## ⚠️ Lưu ý
 
-## 🔧 How It Works
-
-### Advanced Optimization Pipeline
-
-**Phase 1: Process Detection**
-- Smart pattern matching (detects "roblox", "rbx" variants)
-- Filters out installers and uninstallers
-- Real-time process monitoring
-
-**Phase 2: Process Optimization**
-- **CPU Priority Boost**: Sets HIGH/ABOVE_NORMAL priority class
-- **Working Set Trimming**: Optimizes memory allocation
-- **Multi-stage verification**: Checks priority before/after
-
-**Phase 3: System Optimization**
-- Memory cache clearing
-- System-wide performance tuning
-- Cleanup on exit
-
-### Technical Details
-- Uses Windows API: `SetPriorityClass`, `SetProcessWorkingSetSize`
-- Safe handle management with RAII
-- Typed errors with `thiserror`
-- Graceful degradation on failure
-
-## ✨ New Features
-
-- **📊 Optimization Stats**: Real-time metrics display
-- **🎯 Smart Detection**: Better process filtering
-- **💾 Working Set Optimization**: Memory trimming per process
-- **⚡ Two-Phase Optimization**: Priority + Memory optimization
-- **🛡️ Error Recovery**: Graceful handling of failures
-- **📈 Performance Tracking**: Shows optimized process count
-
-## 🔧 How It Works
-
-## 🛡️ Security Warning
-
-**Antivirus False Positives**
-
-Some AVs may flag this due to Windows API usage (OpenProcess, SetPriorityClass).
-
-**This is safe because:**
-- ✅ Full source code available
-- ✅ Modern Rust (memory-safe)
-- ✅ No code injection
-- ✅ Open source auditable
-
-**Detections:**
-- W64.AIDetectMalware (heuristic)
-- ElasticMalicious (moderate confidence)
-
-**Why?** Uses process management APIs + cross-compiled from Linux + no code signing.
-
-**To bypass Windows SmartScreen:**
-1. Click "More info"
-2. Click "Run anyway"
-
-See `SECURITY.md` and `report_false_positive.md` for details.
-
-## 🛡️ Safety
-
-- ✅ No game modification
-- ✅ No memory injection
-- ✅ No ToS violations
-- ✅ System-level only
-- ✅ Memory-safe Rust
-
-## 📋 Requirements
-
-- **OS**: Windows 10/11
-- **RAM**: 4GB minimum
-- **Rust**: 1.75+ (specified in rust-toolchain.toml)
-
-## 🐛 Troubleshooting
-
-**Build errors?**
-```bash
-# Setup everything automatically
-just setup
-
-# Or manual
-rustup target add x86_64-pc-windows-gnu
-```
-
-**Can't find exe?**
-```bash
-# Check build location
-just info
-
-# Or find it manually
-find target -name "roblox_booster.exe"
-```
-
-## 🚀 Development
-
-```bash
-# Format code
-just fmt
-
-# Run linter
-just lint
-
-# Run tests
-just test
-
-# Full CI check
-just ci
-
-# Watch mode (requires cargo-watch)
-cargo install cargo-watch
-just watch
-```
+- Chỉ hoạt động trên **Windows**
+- Cần **quyền admin** để boost một số process
+- **Không** tương tác với game logic
 
 ## 📝 License
 
-MIT OR Apache-2.0
+MIT License - Free to use
 
-## 🤝 Contributing
+## 🤝 Contribute
 
-Read `CONTRIBUTING.md` and `DEVELOPER_NOTES.md` before making changes!
-
-1. Fork the repo
-2. Create feature branch
-3. Make changes
-4. Run `just ci`
-5. Submit PR
-
-**Important:** Read `DEVELOPER_NOTES.md` for critical development guidelines!
+Issues và PRs welcome!
 
 ---
 
-Built with ❤️ using modern Rust, egui, and best practices
-
-**For Developers:** See `DEVELOPER_NOTES.md` for detailed guidance
+**Made by AI** 🤖

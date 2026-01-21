@@ -1,31 +1,30 @@
-# Rust build artifacts
+# Rust
 /target/
 **/*.rs.bk
 *.pdb
-
-# Cargo lock file (keep for binary projects)
 Cargo.lock
 
-# Built executables
-*.exe
-!roblox_booster.exe
-
-# IDE files
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+
+# OS
 .DS_Store
-
-# Debug files
-*.log
-debug/
-
-# OS specific
 Thumbs.db
-Desktop.ini
 
-# Backup files
-*.bak
-*.tmp
+# Config (nếu chứa thông tin nhạy cảm)
+# config.json
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Cross-compilation
+*.o
+*.a
+*.lib
