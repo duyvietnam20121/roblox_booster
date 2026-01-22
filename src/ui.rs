@@ -89,17 +89,17 @@ impl BoosterApp {
                 ui.radio_value(
                     &mut self.config.optimization_level,
                     OptimizationLevel::Low,
-                    "🔵 Low (CPU Priority)",
+                    "🔵 Low - Normal Priority",
                 );
                 ui.radio_value(
                     &mut self.config.optimization_level,
                     OptimizationLevel::Medium,
-                    "🟡 Medium (CPU + Memory)",
+                    "🟡 Medium - Above Normal Priority",
                 );
                 ui.radio_value(
                     &mut self.config.optimization_level,
                     OptimizationLevel::High,
-                    "🔴 High (Maximum)",
+                    "🔴 High - High Priority",
                 );
 
                 ui.add_space(10.0);

@@ -1,80 +1,92 @@
 use crate::config::OptimizationLevel;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 #[cfg(target_os = "windows")]
-use windows::Win32::System::Threading::{
-    ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, OpenProcess,
-    PROCESS_SET_INFORMATION, SetPriorityClass,
+use windows::Win32::{
+    Foundation::CloseHandle,
+    System::Threading::{
+        OpenProcess, SetPriorityClass, ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS,
+        NORMAL_PRIORITY_CLASS, PROCESS_SET_INFORMATION,
+    },
 };
-
-#[cfg(target_os = "windows")]
-use windows::Win32::Foundation::CloseHandle;
-
-#[cfg(target_os = "windows")]
-use windows::Win32::System::ProcessStatus::K32EmptyWorkingSet;
 
 pub struct Booster {
     system: System,
 }
 
+impl Default for Booster {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Booster {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            system: System::new_all(),
+            system: System::new(),
         }
     }
 
-    /// Tìm process Roblox
+    /// Tìm process Roblox (không bao gồm Studio)
     pub fn find_roblox_pid(&mut self) -> Option<u32> {
+        // Refresh process list
         self.system.refresh_processes_specifics(
             ProcessesToUpdate::All,
             true,
-            ProcessRefreshKind::default(),
+            ProcessRefreshKind::new(),
         );
 
+        // Tìm process có tên chứa "roblox" nhưng không phải "studio"
         self.system
             .processes()
             .values()
             .find(|p| {
-                let name = p.name().to_string_lossy().to_lowercase();
+                let name = p.name().to_string_lossy().to_ascii_lowercase();
                 name.contains("roblox") && !name.contains("studio")
             })
             .map(|p| p.pid().as_u32())
     }
 
-    /// Boost Roblox với optimization level
+    /// Boost Roblox - CHỈ thay đổi CPU Priority (100% an toàn)
     #[cfg(target_os = "windows")]
     pub fn boost_roblox(&mut self, level: OptimizationLevel) -> Result<String> {
-        let Some(pid) = self.find_roblox_pid() else {
-            anyhow::bail!("Không tìm thấy Roblox đang chạy");
+        let pid = self
+            .find_roblox_pid()
+            .context("Không tìm thấy Roblox đang chạy")?;
+
+        // Chọn priority level
+        let priority = match level {
+            OptimizationLevel::Low => NORMAL_PRIORITY_CLASS,
+            OptimizationLevel::Medium => ABOVE_NORMAL_PRIORITY_CLASS,
+            OptimizationLevel::High => HIGH_PRIORITY_CLASS,
         };
 
+        // SAFETY: Chỉ thay đổi priority, không đọc/ghi memory
         unsafe {
-            let handle = OpenProcess(PROCESS_SET_INFORMATION, false, pid)?;
+            // Mở process handle với quyền SET_INFORMATION
+            let handle = OpenProcess(PROCESS_SET_INFORMATION, false, pid)
+                .context("Không thể mở process (cần quyền admin?)")?;
 
             // Set CPU priority
-            let priority = match level {
-                OptimizationLevel::Low => NORMAL_PRIORITY_CLASS,
-                OptimizationLevel::Medium => ABOVE_NORMAL_PRIORITY_CLASS,
-                OptimizationLevel::High => HIGH_PRIORITY_CLASS,
-            };
+            let result = SetPriorityClass(handle, priority);
 
-            SetPriorityClass(handle, priority)?;
-
-            // Optimize memory (trim working set)
-            if matches!(level, OptimizationLevel::Medium | OptimizationLevel::High) {
-                let result = K32EmptyWorkingSet(handle);
-                if result.as_bool() == false {
-                    CloseHandle(handle).ok();
-                    anyhow::bail!("Failed to optimize memory");
-                }
-            }
-
+            // CRITICAL: Luôn đóng handle
             CloseHandle(handle).ok();
+
+            // Check kết quả
+            result.context("Không thể set priority")?;
         }
 
-        Ok(format!("Đã boost Roblox (PID: {pid}) - Level: {level:?}"))
+        let level_name = match level {
+            OptimizationLevel::Low => "Normal",
+            OptimizationLevel::Medium => "Above Normal",
+            OptimizationLevel::High => "High",
+        };
+
+        Ok(format!(
+            "✅ Đã boost Roblox (PID: {pid}) - Priority: {level_name}"
+        ))
     }
 
     #[cfg(not(target_os = "windows"))]

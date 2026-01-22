@@ -6,19 +6,22 @@ Game booster tối ưu hóa hiệu suất Roblox một cách an toàn (không vi
 
 - ✅ **Auto Boost**: Tự động tối ưu khi phát hiện Roblox
 - ⚡ **Manual Boost**: Boost thủ công bất cứ lúc nào
-- 🎚️ **3 Optimization Levels**:
-  - **Low**: Tăng CPU priority
-  - **Medium**: CPU + Memory optimization
-  - **High**: Maximum performance
+- 🎚️ **3 CPU Priority Levels**:
+  - **Low**: Normal Priority (mặc định Windows)
+  - **Medium**: Above Normal Priority (khuyến nghị)
+  - **High**: High Priority (maximum performance)
 - 💾 **Lưu settings**: Config tự động save
-- 🔒 **An toàn**: Không inject code, không đọc/ghi memory
+- 🔒 **An toàn tuyệt đối**: CHỈ thay đổi CPU priority
 
 ## 🛠️ Cách tối ưu
 
 App sử dụng Windows API để:
-1. Tăng CPU priority của process Roblox
-2. Trim working set để giải phóng RAM không dùng
-3. **KHÔNG** inject code hoặc truy cập vào game
+1. ✅ Tăng CPU priority của process Roblox (SetPriorityClass)
+2. ❌ **KHÔNG** đọc/ghi memory
+3. ❌ **KHÔNG** inject code
+4. ❌ **KHÔNG** truy cập sâu vào game
+
+**100% tuân thủ Roblox ToS** - chỉ dùng system-level APIs công khai.
 
 ## 📦 Build
 
@@ -74,8 +77,18 @@ just info           # Show binary info
 
 ## ⚙️ Settings
 
-- **Optimization Level**: Chọn mức độ tối ưu (Low/Medium/High)
+- **CPU Priority Level**: Chọn mức độ ưu tiên CPU (Low/Medium/High)
 - **Auto-detect Roblox**: Tự động phát hiện process Roblox
+
+## 🎯 Priority Levels Explained
+
+| Level | Windows Priority | Khi nào dùng |
+|-------|------------------|--------------|
+| Low | Normal | Chơi game nhẹ, multitasking |
+| Medium | Above Normal | Khuyến nghị - Cân bằng performance/ổn định |
+| High | High | Maximum FPS, chơi game nặng |
+
+**Lưu ý**: High priority có thể làm các app khác lag nếu CPU yếu.
 
 ## 📁 Project Structure
 
