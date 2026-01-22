@@ -5,12 +5,10 @@ mod booster;
 mod config;
 mod ui;
 
-use anyhow::Result;
-
-fn main() -> Result<()> {
+fn main() {
     // Load config
     let config = config::Config::load();
-    
+
     // Khởi tạo app
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -20,13 +18,14 @@ fn main() -> Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    if let Err(e) = eframe::run_native(
         "Roblox Booster",
         native_options,
         Box::new(|cc| Ok(Box::new(ui::BoosterApp::new(cc, config)))),
-    )?;
-
-    Ok(())
+    ) {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
+    }
 }
 
 fn load_icon() -> egui::IconData {

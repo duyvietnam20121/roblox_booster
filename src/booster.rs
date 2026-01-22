@@ -4,12 +4,12 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::Threading::{
-    OpenProcess, SetPriorityClass, ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS,
-    NORMAL_PRIORITY_CLASS, PROCESS_SET_INFORMATION,
+    ABOVE_NORMAL_PRIORITY_CLASS, HIGH_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, OpenProcess,
+    PROCESS_SET_INFORMATION, SetPriorityClass,
 };
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Foundation::CloseHandle;
 
 #[cfg(target_os = "windows")]
 use windows::Win32::System::ProcessStatus::K32EmptyWorkingSet;
@@ -29,6 +29,7 @@ impl Booster {
     pub fn find_roblox_pid(&mut self) -> Option<u32> {
         self.system.refresh_processes_specifics(
             ProcessesToUpdate::All,
+            true,
             ProcessRefreshKind::default(),
         );
 
@@ -36,8 +37,8 @@ impl Booster {
             .processes()
             .values()
             .find(|p| {
-                p.name().to_lowercase().contains("roblox")
-                    && !p.name().to_lowercase().contains("studio")
+                let name = p.name().to_string_lossy().to_lowercase();
+                name.contains("roblox") && !name.contains("studio")
             })
             .map(|p| p.pid().as_u32())
     }
@@ -63,7 +64,11 @@ impl Booster {
 
             // Optimize memory (trim working set)
             if matches!(level, OptimizationLevel::Medium | OptimizationLevel::High) {
-                K32EmptyWorkingSet(handle)?;
+                let result = K32EmptyWorkingSet(handle);
+                if result.as_bool() == false {
+                    CloseHandle(handle).ok();
+                    anyhow::bail!("Failed to optimize memory");
+                }
             }
 
             CloseHandle(handle).ok();
