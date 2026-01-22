@@ -34,11 +34,12 @@ impl BoosterApp {
         if ui
             .add_sized(
                 [200.0, 40.0],
-                egui::Button::new(auto_boost_text).fill(if self.config.auto_boost {
-                    egui::Color32::from_rgb(0, 150, 0)
-                } else {
-                    egui::Color32::from_rgb(150, 0, 0)
-                }),
+                egui::Button::new(auto_boost_text)
+                    .fill(if self.config.auto_boost {
+                        egui::Color32::from_rgb(0, 150, 0)
+                    } else {
+                        egui::Color32::from_rgb(150, 0, 0)
+                    }),
             )
             .clicked()
         {
@@ -63,7 +64,7 @@ impl BoosterApp {
 
         // Status
         ui.label(format!("📊 Trạng thái: {}", self.status_message));
-
+        
         let roblox_status = if self.booster.is_roblox_running() {
             "✅ Roblox đang chạy"
         } else {
@@ -75,7 +76,7 @@ impl BoosterApp {
     fn render_settings_window(&mut self, ctx: &egui::Context) {
         let mut show_settings = self.show_settings;
         let mut should_close = false;
-
+        
         egui::Window::new("⚙️ Settings")
             .open(&mut show_settings)
             .resizable(false)
@@ -84,7 +85,7 @@ impl BoosterApp {
                 ui.add_space(5.0);
 
                 use crate::config::OptimizationLevel;
-
+                
                 ui.radio_value(
                     &mut self.config.optimization_level,
                     OptimizationLevel::Low,
@@ -121,7 +122,7 @@ impl BoosterApp {
                     should_close = true;
                 }
             });
-
+        
         // Update show_settings based on window state and close button
         self.show_settings = show_settings && !should_close;
     }
