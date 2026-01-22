@@ -22,7 +22,8 @@ impl Default for Booster {
 }
 
 impl Booster {
-    pub const fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             system: System::new(),
         }
@@ -43,9 +44,30 @@ impl Booster {
             .values()
             .find(|p| {
                 let name = p.name().to_string_lossy().to_ascii_lowercase();
-                name.contains("roblox") && !name.contains("studio")
+                // Chỉ chấp nhận RobloxPlayerBeta.exe hoặc Roblox.exe
+                // Loại trừ: Studio, Installer, Uninstaller, Crash Reporter
+                name.contains("roblox")
+                    && !name.contains("studio")
+                    && !name.contains("install")
+                    && !name.contains("crash")
             })
             .map(|p| p.pid().as_u32())
+    }
+
+    /// Lấy tên process từ PID (để verify)
+    #[cfg(target_os = "windows")]
+    pub fn get_process_name(&mut self, pid: u32) -> Option<String> {
+        self.system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::new(),
+        );
+
+        self.system
+            .processes()
+            .values()
+            .find(|p| p.pid().as_u32() == pid)
+            .map(|p| p.name().to_string_lossy().to_string())
     }
 
     /// Boost Roblox - CHỈ thay đổi CPU Priority (100% an toàn)
@@ -54,6 +76,11 @@ impl Booster {
         let pid = self
             .find_roblox_pid()
             .context("Không tìm thấy Roblox đang chạy")?;
+
+        // Verify process name để đảm bảo không boost nhầm
+        let process_name = self
+            .get_process_name(pid)
+            .context("Không thể xác minh tên process")?;
 
         // Chọn priority level
         let priority = match level {
@@ -85,7 +112,7 @@ impl Booster {
         };
 
         Ok(format!(
-            "✅ Đã boost Roblox (PID: {pid}) - Priority: {level_name}"
+            "✅ Boosted {process_name} (PID: {pid}) → {level_name} Priority"
         ))
     }
 
@@ -98,4 +125,36 @@ impl Booster {
     pub fn is_roblox_running(&mut self) -> bool {
         self.find_roblox_pid().is_some()
     }
+
+    /// Lấy thông tin chi tiết về process Roblox
+    #[cfg(target_os = "windows")]
+    pub fn get_roblox_info(&mut self) -> Option<ProcessInfo> {
+        let pid = self.find_roblox_pid()?;
+        let name = self.get_process_name(pid)?;
+
+        Some(ProcessInfo { pid, name })
+    }
+
+    /// Reset priority về Normal (safe shutdown)
+    #[cfg(target_os = "windows")]
+    pub fn reset_priority(&mut self) -> Result<()> {
+        if let Some(pid) = self.find_roblox_pid() {
+            unsafe {
+                let handle = OpenProcess(PROCESS_SET_INFORMATION, false, pid)
+                    .context("Không thể mở process")?;
+
+                let result = SetPriorityClass(handle, NORMAL_PRIORITY_CLASS);
+                CloseHandle(handle).ok();
+                result.context("Không thể reset priority")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Thông tin về process
+#[derive(Debug, Clone)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
 }

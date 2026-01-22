@@ -9,6 +9,16 @@ pub struct BoosterApp {
     last_check: std::time::Instant,
 }
 
+impl Drop for BoosterApp {
+    fn drop(&mut self) {
+        // Reset priority khi app đóng (cleanup)
+        #[cfg(target_os = "windows")]
+        if let Err(e) = self.booster.reset_priority() {
+            eprintln!("Warning: Failed to reset priority on exit: {e}");
+        }
+    }
+}
+
 impl BoosterApp {
     pub fn new(_cc: &eframe::CreationContext<'_>, config: Config) -> Self {
         Self {
@@ -65,12 +75,23 @@ impl BoosterApp {
         // Status
         ui.label(format!("📊 Trạng thái: {}", self.status_message));
         
-        let roblox_status = if self.booster.is_roblox_running() {
-            "✅ Roblox đang chạy"
+        // Hiển thị thông tin process nếu đang chạy
+        #[cfg(target_os = "windows")]
+        if let Some(info) = self.booster.get_roblox_info() {
+            ui.label(format!("✅ Process: {} (PID: {})", info.name, info.pid));
         } else {
-            "⚠️ Roblox chưa chạy"
-        };
-        ui.label(roblox_status);
+            ui.label("⚠️ Roblox chưa chạy");
+        }
+        
+        #[cfg(not(target_os = "windows"))]
+        {
+            let roblox_status = if self.booster.is_roblox_running() {
+                "✅ Roblox đang chạy"
+            } else {
+                "⚠️ Roblox chưa chạy"
+            };
+            ui.label(roblox_status);
+        }
     }
 
     fn render_settings_window(&mut self, ctx: &egui::Context) {
@@ -120,6 +141,17 @@ impl BoosterApp {
                         self.status_message = "✅ Đã lưu settings".to_string();
                     }
                     should_close = true;
+                }
+                
+                ui.add_space(5.0);
+                
+                // Reset button
+                #[cfg(target_os = "windows")]
+                if ui.button("🔄 Reset Priority").clicked() {
+                    match self.booster.reset_priority() {
+                        Ok(()) => self.status_message = "✅ Đã reset priority về Normal".to_string(),
+                        Err(e) => self.status_message = format!("❌ Lỗi reset: {e}"),
+                    }
                 }
             });
         
