@@ -1,27 +1,30 @@
 fn main() {
-    // Chỉ build metadata trên Windows
+    // Windows resource compilation
     #[cfg(target_os = "windows")]
     {
         let mut res = winres::WindowsResource::new();
 
-        // Metadata để giảm false positive từ antivirus
-        res.set_icon("icon.ico") // có icon
-            .set("ProductName", "Roblox Booster")
-            .set("FileDescription", "Safe Roblox performance optimizer")
-            .set("CompanyName", "Made by AI")
-            .set("LegalCopyright", "MIT License")
+        // Professional metadata to reduce antivirus false positives
+        res.set("ProductName", "Roblox Performance Optimizer")
+            .set(
+                "FileDescription",
+                "Game performance optimizer using Windows priority control",
+            )
+            .set("CompanyName", "Open Source Project")
+            .set("LegalCopyright", "MIT License - Open Source")
             .set("ProductVersion", env!("CARGO_PKG_VERSION"))
-            .set("FileVersion", env!("CARGO_PKG_VERSION"));
+            .set("FileVersion", env!("CARGO_PKG_VERSION"))
+            .set("OriginalFilename", "roblox_booster.exe")
+            .set("InternalName", "roblox_booster");
 
-        // Compile resource
-        if let Err(e) = res.compile() {
-            eprintln!("Warning: Failed to compile Windows resources: {e}");
+        // Compile resources
+        if let Err(error) = res.compile() {
+            eprintln!("Warning: Failed to compile Windows resources: {error}");
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        // Cross-compile: winres không cần thiết
-        println!("cargo:warning=Skipping Windows resource compilation (cross-compile)");
+        println!("cargo:warning=Skipping Windows resource compilation (cross-compile mode)");
     }
 }

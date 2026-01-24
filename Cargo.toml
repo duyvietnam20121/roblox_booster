@@ -2,7 +2,12 @@
 name = "roblox_booster"
 version = "0.1.0"
 edition = "2024"
-authors = ["Made by AI"]
+authors = ["Open Source Contributors"]
+description = "Safe performance optimizer for Roblox using Windows CPU priority control"
+repository = "https://github.com/yourusername/roblox_booster"
+license = "MIT"
+keywords = ["roblox", "performance", "optimizer", "gaming"]
+categories = ["games"]
 rust-version = "1.85"
 
 [dependencies]

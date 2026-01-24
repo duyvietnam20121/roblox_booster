@@ -137,6 +137,7 @@ impl Booster {
 
     /// Reset priority về Normal (safe shutdown)
     #[cfg(target_os = "windows")]
+    #[allow(dead_code)] // Dùng trong Drop trait
     pub fn reset_priority(&mut self) -> Result<()> {
         if let Some(pid) = self.find_roblox_pid() {
             unsafe {

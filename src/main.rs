@@ -8,7 +8,7 @@ mod ui;
 fn main() {
     // Load config
     let config = config::Config::load();
-
+    
     // Khởi tạo app
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
