@@ -1,8 +1,33 @@
-# Cargo config cho cross-compilation
+# Cấu hình mặc định cho Windows GNU toolchain
 
 [build]
+# Mặc định target cho Windows
 target = "x86_64-pc-windows-gnu"
 
 [target.x86_64-pc-windows-gnu]
+# Linker cho 64-bit Windows GNU
 linker = "x86_64-w64-mingw32-gcc"
 ar = "x86_64-w64-mingw32-ar"
+
+# Tối ưu hóa cho Windows
+rustflags = [
+    "-C", "target-cpu=native",
+    "-C", "link-arg=-s",  # Strip symbols
+]
+
+[target.i686-pc-windows-gnu]
+# Linker cho 32-bit Windows GNU (nếu cần)
+linker = "i686-w64-mingw32-gcc"
+ar = "i686-w64-mingw32-ar"
+
+# Profile cho development
+[profile.dev]
+opt-level = 1
+
+# Profile cho release - tối ưu tối đa
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

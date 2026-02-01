@@ -1,209 +1,262 @@
-use crate::{booster::Booster, config::Config};
-use eframe::egui;
+use crate::booster::RobloxBoosterEngine;
+use crate::config::Config;
+use iced::{
+    widget::{button, checkbox, column, container, row, text, Column},
+    Alignment, Application, Command, Element, Length, Theme,
+};
+use std::sync::Arc;
 
-pub struct BoosterApp {
-    config: Config,
-    optimizer: Booster,
-    status_message: String,
+/// Message types cho UI
+#[derive(Debug, Clone)]
+pub enum Message {
+    ToggleBooster,
+    OpenSettings,
+    CloseSettings,
+    
+    // Config toggles
+    ToggleAutoStart(bool),
+    ToggleTimerResolution(bool),
+    ToggleMemoryCleanup(bool),
+    ToggleAutoDetection(bool),
+    
+    SaveSettings,
+}
+
+/// Main application struct
+pub struct RobloxBooster {
+    booster: Arc<RobloxBoosterEngine>,
+    is_boosting: bool,
     show_settings: bool,
-    last_optimization_check: std::time::Instant,
+    config: Config,
 }
 
-impl Drop for BoosterApp {
-    fn drop(&mut self) {
-        // Cleanup: Reset priority when app closes
-        #[cfg(target_os = "windows")]
-        if let Err(e) = self.optimizer.reset() {
-            eprintln!("Cleanup warning: {e}");
-        }
+impl Application for RobloxBooster {
+    type Executor = iced::executor::Default;
+    type Message = Message;
+    type Theme = Theme;
+    type Flags = ();
+
+    fn new(_flags: ()) -> (Self, Command<Message>) {
+        let config = Config::load();
+        
+        (
+            Self {
+                booster: Arc::new(RobloxBoosterEngine::new(config.clone())),
+                is_boosting: false,
+                show_settings: false,
+                config,
+            },
+            Command::none(),
+        )
     }
-}
 
-impl BoosterApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>, config: Config) -> Self {
-        Self {
-            config,
-            optimizer: Booster::new(),
-            status_message: String::from("Ready"),
-            show_settings: false,
-            last_optimization_check: std::time::Instant::now(),
-        }
+    fn title(&self) -> String {
+        String::from("Roblox Booster - No Admin Required")
     }
 
-    fn render_main_controls(&mut self, ui: &mut egui::Ui) {
-        ui.heading("🚀 Roblox Performance Optimizer");
-        ui.add_space(10.0);
+    fn update(&mut self, message: Message) -> Command<Message> {
+        match message {
+            Message::ToggleBooster => {
+                if self.is_boosting {
+                    self.booster.stop();
+                    self.is_boosting = false;
+                } else {
+                    // Recreate booster với config hiện tại
+                    self.booster = Arc::new(RobloxBoosterEngine::new(self.config.clone()));
+                    
+                    let booster = Arc::clone(&self.booster);
+                    tokio::spawn(async move {
+                        booster.start().await;
+                    });
+                    self.is_boosting = true;
+                }
+            }
+            Message::OpenSettings => {
+                self.show_settings = true;
+            }
+            Message::CloseSettings => {
+                self.show_settings = false;
+            }
+            
+            // Config updates
+            Message::ToggleAutoStart(value) => {
+                self.config.auto_start = value;
+            }
+            Message::ToggleTimerResolution(value) => {
+                self.config.enable_timer_resolution = value;
+            }
+            Message::ToggleMemoryCleanup(value) => {
+                self.config.enable_memory_cleanup = value;
+            }
+            Message::ToggleAutoDetection(value) => {
+                self.config.enable_auto_detection = value;
+            }
+            
+            Message::SaveSettings => {
+                let _ = self.config.save();
+                self.show_settings = false;
+                
+                // Nếu đang chạy, restart với config mới
+                if self.is_boosting {
+                    self.booster.stop();
+                    self.booster = Arc::new(RobloxBoosterEngine::new(self.config.clone()));
+                    
+                    let booster = Arc::clone(&self.booster);
+                    tokio::spawn(async move {
+                        booster.start().await;
+                    });
+                }
+            }
+        }
+        Command::none()
+    }
 
-        // Auto optimization toggle
-        let auto_text = if self.config.auto_boost {
-            "✅ Auto Optimization: ON"
+    fn view(&self) -> Element<Message> {
+        if self.show_settings {
+            self.settings_view()
         } else {
-            "❌ Auto Optimization: OFF"
+            self.main_view()
+        }
+    }
+
+    fn theme(&self) -> Theme {
+        Theme::Dark
+    }
+}
+
+impl RobloxBooster {
+    /// View chính
+    fn main_view(&self) -> Element<Message> {
+        let status_text = if self.is_boosting {
+            "🚀 AUTO BOOSTER: ĐANG CHẠY"
+        } else {
+            "⏸️ AUTO BOOSTER: TẮT"
         };
 
-        if ui
-            .add_sized(
-                [250.0, 40.0],
-                egui::Button::new(auto_text).fill(if self.config.auto_boost {
-                    egui::Color32::from_rgb(0, 150, 0)
-                } else {
-                    egui::Color32::from_rgb(100, 100, 100)
-                }),
-            )
-            .clicked()
-        {
-            self.config.auto_boost = !self.config.auto_boost;
-            self.config.save().ok();
-        }
-
-        ui.add_space(10.0);
-
-        // Manual optimization button
-        if ui
-            .add_sized([250.0, 35.0], egui::Button::new("⚡ Optimize Now"))
-            .clicked()
-        {
-            match self.optimizer.optimize(self.config.optimization_level) {
-                Ok(msg) => self.status_message = msg,
-                Err(e) => self.status_message = format!("Error: {e}"),
-            }
-        }
-
-        ui.add_space(15.0);
-
-        // Status display
-        ui.group(|ui| {
-            ui.label(format!("📊 Status: {}", self.status_message));
-
-            #[cfg(target_os = "windows")]
-            if let Some(info) = self.optimizer.get_roblox_info() {
-                ui.label(format!("✅ Process: {} (PID: {})", info.name, info.pid));
+        let toggle_button = button(
+            text(if self.is_boosting {
+                "TẮT AUTO BOOSTER"
             } else {
-                ui.label("⚠️ Roblox not detected");
-            }
+                "BẬT AUTO BOOSTER"
+            })
+            .size(20),
+        )
+        .padding(20)
+        .on_press(Message::ToggleBooster);
 
-            #[cfg(not(target_os = "windows"))]
-            {
-                let status = if self.optimizer.is_roblox_running() {
-                    "✅ Roblox is running"
-                } else {
-                    "⚠️ Roblox not detected"
-                };
-                ui.label(status);
-            }
-        });
+        let settings_button = button(text("⚙️ SETTINGS").size(16))
+            .padding(15)
+            .on_press(Message::OpenSettings);
+        
+        // Active features
+        let features_text = self.get_features_summary();
+
+        let content = column![
+            text("ROBLOX BOOSTER").size(28),
+            text("(Không cần Admin)").size(14),
+            text("").size(5),
+            text(status_text).size(18),
+            text("").size(10),
+            text(features_text).size(12),
+            text("").size(15),
+            toggle_button,
+            settings_button,
+            text("").size(10),
+            text("💡 Tip: Mở Roblox và app sẽ tự tối ưu").size(11),
+        ]
+        .spacing(12)
+        .align_items(Alignment::Center);
+
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .into()
     }
 
-    fn render_settings_window(&mut self, ctx: &egui::Context) {
-        let mut show_settings = self.show_settings;
-        let mut should_close = false;
+    /// View settings
+    fn settings_view(&self) -> Element<Message> {
+        let content: Column<Message> = column![
+            text("⚙️ CÀI ĐẶT").size(26),
+            text("").size(5),
+            
+            // General
+            text("Chung:").size(18),
+            checkbox("Auto Start khi mở app", self.config.auto_start)
+                .on_toggle(Message::ToggleAutoStart),
+            
+            text("").size(10),
+            
+            // Features (KHÔNG CẦN ADMIN)
+            text("Tính Năng:").size(18),
+            
+            checkbox(
+                "⏱️  Timer Resolution (1ms)\n    → Giảm lag, game mượt hơn",
+                self.config.enable_timer_resolution
+            )
+            .on_toggle(Message::ToggleTimerResolution),
+            
+            checkbox(
+                "🧹 Memory Cleanup (60s)\n    → Giải phóng RAM cho Roblox",
+                self.config.enable_memory_cleanup
+            )
+            .on_toggle(Message::ToggleMemoryCleanup),
+            
+            checkbox(
+                "🔍 Auto-Detection\n    → Tự động phát hiện Roblox",
+                self.config.enable_auto_detection
+            )
+            .on_toggle(Message::ToggleAutoDetection),
+            
+            text("").size(15),
+            
+            // Info
+            text("ℹ️  Tất cả features KHÔNG cần Admin").size(11),
+            text("ℹ️  Tối ưu system-wide cho mọi app").size(11),
+            
+            text("").size(10),
+            
+            // Buttons
+            row![
+                button(text("💾 LƯU").size(16))
+                    .padding(15)
+                    .on_press(Message::SaveSettings),
+                button(text("❌ HỦY").size(16))
+                    .padding(15)
+                    .on_press(Message::CloseSettings),
+            ]
+            .spacing(10),
+        ]
+        .spacing(10)
+        .align_items(Alignment::Center);
 
-        egui::Window::new("⚙️ Settings")
-            .open(&mut show_settings)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.heading("Priority Level");
-                ui.add_space(5.0);
-
-                use crate::config::OptimizationLevel;
-
-                ui.radio_value(
-                    &mut self.config.optimization_level,
-                    OptimizationLevel::Low,
-                    "🔵 Low - Normal Priority",
-                );
-                ui.label("    Balanced performance, safe for multitasking");
-
-                ui.add_space(5.0);
-
-                ui.radio_value(
-                    &mut self.config.optimization_level,
-                    OptimizationLevel::Medium,
-                    "🟡 Medium - Above Normal Priority",
-                );
-                ui.label("    Recommended for gaming");
-
-                ui.add_space(5.0);
-
-                ui.radio_value(
-                    &mut self.config.optimization_level,
-                    OptimizationLevel::High,
-                    "🔴 High - High Priority",
-                );
-                ui.label("    Maximum performance, may affect other apps");
-
-                ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(5.0);
-
-                ui.checkbox(
-                    &mut self.config.auto_detect_roblox,
-                    "Auto-detect Roblox process",
-                );
-
-                ui.add_space(15.0);
-
-                ui.horizontal(|ui| {
-                    if ui.button("💾 Save").clicked() {
-                        if let Err(e) = self.config.save() {
-                            self.status_message = format!("Save error: {e}");
-                        } else {
-                            self.status_message = "Settings saved".to_string();
-                        }
-                        should_close = true;
-                    }
-
-                    ui.add_space(10.0);
-
-                    #[cfg(target_os = "windows")]
-                    if ui.button("🔄 Reset Priority").clicked() {
-                        match self.optimizer.reset() {
-                            Ok(()) => self.status_message = "Priority reset to Normal".to_string(),
-                            Err(e) => self.status_message = format!("Reset error: {e}"),
-                        }
-                    }
-                });
-            });
-
-        self.show_settings = show_settings && !should_close;
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .center_x()
+            .center_y()
+            .into()
     }
-}
-
-impl eframe::App for BoosterApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Auto-optimization logic (every 5 seconds)
-        if self.config.auto_boost
-            && self.last_optimization_check.elapsed().as_secs() >= 5
-        {
-            if self.optimizer.is_roblox_running() {
-                if let Ok(msg) = self.optimizer.optimize(self.config.optimization_level) {
-                    self.status_message = format!("Auto: {msg}");
-                }
-            }
-            self.last_optimization_check = std::time::Instant::now();
+    
+    /// Summary của active features
+    fn get_features_summary(&self) -> String {
+        let mut active = Vec::new();
+        
+        if self.config.enable_timer_resolution {
+            active.push("⏱️ Timer 1ms");
         }
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                self.render_main_controls(ui);
-
-                ui.add_space(20.0);
-                ui.separator();
-                ui.add_space(10.0);
-
-                if ui.button("⚙️ Settings").clicked() {
-                    self.show_settings = true;
-                }
-            });
-        });
-
-        if self.show_settings {
-            self.render_settings_window(ctx);
+        if self.config.enable_memory_cleanup {
+            active.push("🧹 RAM Cleanup");
         }
-
-        // Request repaint for auto-optimization
-        if self.config.auto_boost {
-            ctx.request_repaint_after(std::time::Duration::from_secs(1));
+        if self.config.enable_auto_detection {
+            active.push("🔍 Auto-Detect");
+        }
+        
+        if active.is_empty() {
+            "❌ Không có feature nào được bật".to_string()
+        } else {
+            format!("Features: {}", active.join(" | "))
         }
     }
 }

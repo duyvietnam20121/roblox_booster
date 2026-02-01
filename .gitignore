@@ -1,30 +1,34 @@
-# Rust
+# Rust Build Artifacts
 /target/
 **/*.rs.bk
 *.pdb
+
+# Cargo lock file
 Cargo.lock
 
-# IDE
-.vscode/
+# IDEs
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
+
+# Backup files
+*.bak
+*.orig
+
+# OS files
 Thumbs.db
+desktop.ini
 
-# Config (nếu chứa thông tin nhạy cảm)
-# config.json
+# Debug/Release builds
+debug/
+release/
 
-# Build artifacts
-*.exe
-*.dll
-*.so
-*.dylib
+# Documentation
+/doc/
 
-# Cross-compilation
-*.o
-*.a
-*.lib
+# Settings/Config
+config.json
+settings.json
