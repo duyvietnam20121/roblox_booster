@@ -1,4 +1,4 @@
-use sysinfo::{ProcessExt, System, SystemExt, PidExt};
+use sysinfo::System;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time;
@@ -6,9 +6,8 @@ use crate::config::Config;
 
 #[cfg(target_os = "windows")]
 use windows::{
-    core::*,
-    Win32::Foundation::*,
-    Win32::System::Memory::*,
+    Win32::System::ProcessStatus::EmptyWorkingSet,
+    Win32::System::Threading::GetCurrentProcess,
 };
 
 /// Struct chính quản lý việc boost - KHÔNG CẦN ADMIN
@@ -47,8 +46,15 @@ impl RobloxBoosterEngine {
         let config_clone = Arc::clone(&self.config);
 
         tokio::spawn(async move {
-            // MỖI 60 GIÂY
-            let mut interval = time::interval(Duration::from_secs(60));
+            let interval_seconds = {
+                let config = config_clone.lock().unwrap().clone();
+                if config.boost_interval_seconds == 0 {
+                    60
+                } else {
+                    config.boost_interval_seconds
+                }
+            };
+            let mut interval = time::interval(Duration::from_secs(interval_seconds));
 
             loop {
                 interval.tick().await;
@@ -63,21 +69,25 @@ impl RobloxBoosterEngine {
                 sys.refresh_all();
 
                 let config = config_clone.lock().unwrap().clone();
-                
+
                 // Detect Roblox (chỉ để hiển thị status)
-                Self::detect_roblox(&sys);
+                if config.enable_auto_detection {
+                    Self::detect_roblox(&sys);
+                }
                 
                 // Memory cleanup (dọn RAM của app này)
                 if config.enable_memory_cleanup {
                     Self::cleanup_memory();
                 }
-                
-                println!("⏱️  Cycle hoàn tất (next: 60s)\n");
+
+                println!("⏱️  Cycle hoàn tất (next: {}s)\n", interval_seconds);
             }
         });
         
         println!("🚀 Auto Booster đã BẬT");
-        println!("⏱️  Boost interval: 60 giây");
+        let interval_seconds = self.config.lock().unwrap().boost_interval_seconds;
+        let interval_seconds = if interval_seconds == 0 { 60 } else { interval_seconds };
+        println!("⏱️  Boost interval: {} giây", interval_seconds);
         println!("ℹ️  Chế độ: Không cần Admin\n");
     }
 
