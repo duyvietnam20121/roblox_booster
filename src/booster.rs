@@ -1,108 +1,225 @@
+
 use sysinfo::{ProcessExt, System, SystemExt, PidExt};
+use sysinfo::System;
+use std::sync::{Arc, Mutex};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::time::Duration;
+use tokio::time;
 use tokio::time;
 use crate::config::Config;
+use crate::config::Config;
+
 
 #[cfg(target_os = "windows")]
+#[cfg(target_os = "windows")]
+use windows::{
 use windows::{
     core::*,
+    Win32::System::ProcessStatus::EmptyWorkingSet,
     Win32::Foundation::*,
+    Win32::System::Threading::GetCurrentProcess,
     Win32::System::Memory::*,
 };
+};
+
 
 /// Struct chính quản lý việc boost - KHÔNG CẦN ADMIN
+/// Struct chính quản lý việc boost - KHÔNG CẦN ADMIN
+pub struct RobloxBoosterEngine {
 pub struct RobloxBoosterEngine {
     is_running: Arc<Mutex<bool>>,
+    is_running: Arc<Mutex<bool>>,
+    sys: Arc<Mutex<System>>,
     sys: Arc<Mutex<System>>,
     config: Arc<Mutex<Config>>,
+    config: Arc<Mutex<Config>>,
+    timer_resolution_active: Arc<Mutex<bool>>,
     timer_resolution_active: Arc<Mutex<bool>>,
 }
+}
+
 
 impl RobloxBoosterEngine {
+impl RobloxBoosterEngine {
+    pub fn new(config: Config) -> Self {
     pub fn new(config: Config) -> Self {
         Self {
+        Self {
+            is_running: Arc::new(Mutex::new(false)),
             is_running: Arc::new(Mutex::new(false)),
             sys: Arc::new(Mutex::new(System::new_all())),
+            sys: Arc::new(Mutex::new(System::new_all())),
+            config: Arc::new(Mutex::new(config)),
             config: Arc::new(Mutex::new(config)),
             timer_resolution_active: Arc::new(Mutex::new(false)),
+            timer_resolution_active: Arc::new(Mutex::new(false)),
+        }
         }
     }
+    }
+
 
     /// Bắt đầu auto boost - KHÔNG CẦN ADMIN
+    /// Bắt đầu auto boost - KHÔNG CẦN ADMIN
+    pub async fn start(&self) {
     pub async fn start(&self) {
         let mut is_running = self.is_running.lock().unwrap();
+        let mut is_running = self.is_running.lock().unwrap();
+        *is_running = true;
         *is_running = true;
         drop(is_running);
+        drop(is_running);
+
 
         println!("\n╔══════════════════════════════════════╗");
+        println!("\n╔══════════════════════════════════════╗");
+        println!("║  ĐANG KHỞI ĐỘNG BOOSTER (No Admin)  ║");
         println!("║  ĐANG KHỞI ĐỘNG BOOSTER (No Admin)  ║");
         println!("╚══════════════════════════════════════╝\n");
+        println!("╚══════════════════════════════════════╝\n");
+
 
         // Áp dụng Timer Resolution (system-wide, không cần admin)
+        // Áp dụng Timer Resolution (system-wide, không cần admin)
+        self.apply_timer_resolution();
         self.apply_timer_resolution();
 
+
+        let is_running_clone = Arc::clone(&self.is_running);
         let is_running_clone = Arc::clone(&self.is_running);
         let sys_clone = Arc::clone(&self.sys);
+        let sys_clone = Arc::clone(&self.sys);
+        let config_clone = Arc::clone(&self.config);
         let config_clone = Arc::clone(&self.config);
 
+
+        tokio::spawn(async move {
         tokio::spawn(async move {
             // MỖI 60 GIÂY
+            let interval_seconds = {
             let mut interval = time::interval(Duration::from_secs(60));
+                let config = config_clone.lock().unwrap().clone();
+                if config.boost_interval_seconds == 0 {
+                    60
+                } else {
+                    config.boost_interval_seconds
+                }
+            };
+            let mut interval = time::interval(Duration::from_secs(interval_seconds));
+
 
             loop {
+            loop {
+                interval.tick().await;
                 interval.tick().await;
 
+
+                let running = *is_running_clone.lock().unwrap();
                 let running = *is_running_clone.lock().unwrap();
                 if !running {
+                if !running {
+                    break;
                     break;
                 }
+                }
+
 
                 // Refresh system info
+                // Refresh system info
+                let mut sys = sys_clone.lock().unwrap();
                 let mut sys = sys_clone.lock().unwrap();
                 sys.refresh_all();
+                sys.refresh_all();
+
 
                 let config = config_clone.lock().unwrap().clone();
+                let config = config_clone.lock().unwrap().clone();
                 
+
+                // Detect Roblox (chỉ để hiển thị status)
                 // Detect Roblox (chỉ để hiển thị status)
                 Self::detect_roblox(&sys);
-                
-                // Memory cleanup (dọn RAM của app này)
-                if config.enable_memory_cleanup {
-                    Self::cleanup_memory();
+                if config.enable_auto_detection {
+                    Self::detect_roblox(&sys);
                 }
                 
+                
+                // Memory cleanup (dọn RAM của app này)
+                // Memory cleanup (dọn RAM của app này)
+                if config.enable_memory_cleanup {
+                if config.enable_memory_cleanup {
+                    Self::cleanup_memory();
+                    Self::cleanup_memory();
+                }
+                }
+                
+
                 println!("⏱️  Cycle hoàn tất (next: 60s)\n");
+                println!("⏱️  Cycle hoàn tất (next: {}s)\n", interval_seconds);
+            }
             }
         });
+        });
+        
         
         println!("🚀 Auto Booster đã BẬT");
+        println!("🚀 Auto Booster đã BẬT");
         println!("⏱️  Boost interval: 60 giây");
+        let interval_seconds = self.config.lock().unwrap().boost_interval_seconds;
+        let interval_seconds = if interval_seconds == 0 { 60 } else { interval_seconds };
+        println!("⏱️  Boost interval: {} giây", interval_seconds);
+        println!("ℹ️  Chế độ: Không cần Admin\n");
         println!("ℹ️  Chế độ: Không cần Admin\n");
     }
+    }
+
 
     /// Dừng auto boost
+    /// Dừng auto boost
+    pub fn stop(&self) {
     pub fn stop(&self) {
         let mut is_running = self.is_running.lock().unwrap();
+        let mut is_running = self.is_running.lock().unwrap();
+        *is_running = false;
         *is_running = false;
         
+        
+        // Restore timer resolution
         // Restore timer resolution
         self.restore_timer_resolution();
+        self.restore_timer_resolution();
+        
         
         println!("\n⏸️  Auto Booster đã TẮT\n");
+        println!("\n⏸️  Auto Booster đã TẮT\n");
     }
+    }
+
 
     /// Kiểm tra trạng thái
+    /// Kiểm tra trạng thái
+    pub fn is_running(&self) -> bool {
     pub fn is_running(&self) -> bool {
         *self.is_running.lock().unwrap()
+        *self.is_running.lock().unwrap()
+    }
     }
 
+
+    // ========================================
     // ========================================
     // TÍNH NĂNG 1: TIMER RESOLUTION (System-wide)
+    // TÍNH NĂNG 1: TIMER RESOLUTION (System-wide)
+    // ========================================
     // ========================================
     
+    
+    /// Set timer resolution to 1ms - KHÔNG CẦN ADMIN
     /// Set timer resolution to 1ms - KHÔNG CẦN ADMIN
     /// Áp dụng cho toàn hệ thống, benefit cho tất cả apps
+    /// Áp dụng cho toàn hệ thống, benefit cho tất cả apps
+    
     fn apply_timer_resolution(&self) {
         let config = self.config.lock().unwrap();
         

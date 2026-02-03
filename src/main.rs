@@ -1,4 +1,3 @@
-mod booster;
 mod config;
 mod ui;
 
@@ -24,7 +23,7 @@ fn main() -> iced::Result {
     
     ui::RobloxBooster::run(Settings {
         window: iced::window::Settings {
-            size: (450, 500),
+            size: iced::Size::new(450.0, 500.0),
             resizable: false,
             decorations: true,
             ..Default::default()
