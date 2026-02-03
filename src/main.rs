@@ -1,4 +1,3 @@
-mod booster;
 mod config;
 mod ui;
 
